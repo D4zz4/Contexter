@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Contexter</string>
+    <string name="title_activity_main">Contexter</string>
+    <string name="package_name">app.contexter.local</string>
+    <string name="custom_url_scheme">app.contexter.local</string>
+</resources>

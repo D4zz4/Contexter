@@ -1,0 +1,42 @@
+{
+  "name": "contexter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "wxt prepare && tsc --noEmit && vite build && wxt build",
+    "build:web": "wxt prepare && tsc --noEmit && vite build",
+    "build:extension": "wxt build",
+    "dev:extension": "wxt",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.2",
+    "@mozilla/readability": "0.6.0",
+    "jszip": "3.10.2",
+    "mammoth": "1.12.3",
+    "marked": "18.0.14",
+    "papaparse": "5.7.0",
+    "pdfjs-dist": "6.3.289",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "turndown": "7.2.4",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/cli": "8.5.2",
+    "@types/chrome": "0.3.0",
+    "@types/papaparse": "5.5.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/turndown": "^5.0.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "@wxt-dev/module-react": "1.2.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.1",
+    "wxt": "0.21.4"
+  }
+}

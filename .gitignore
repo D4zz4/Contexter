@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.output/
+.wxt/
+.DS_Store
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+*.log
+.env*
+!.env.example

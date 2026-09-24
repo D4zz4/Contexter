@@ -23,7 +23,7 @@ function validSource(value: unknown): value is Source {
   if (!value || typeof value !== 'object') return false;
   const source = value as Record<string, unknown>;
   return validId(source.id) && validId(source.notebookId) &&
-    ['web', 'youtube', 'text', 'markdown', 'html', 'pdf', 'docx', 'epub', 'csv'].includes(String(source.kind)) && typeof source.title === 'string' &&
+    ['web', 'youtube', 'subtitle', 'text', 'markdown', 'html', 'pdf', 'docx', 'epub', 'csv'].includes(String(source.kind)) && typeof source.title === 'string' &&
     typeof source.body === 'string' && typeof source.importedAt === 'string' &&
     typeof source.enabled === 'boolean' && ['ready', 'partial', 'failed', 'queued'].includes(String(source.status)) &&
     Array.isArray(source.warnings) && source.warnings.every(item => typeof item === 'string') &&

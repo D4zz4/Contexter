@@ -5,6 +5,7 @@ import * as pdfjs from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
 import type { SourceKind } from './model';
+import { subtitleToText } from './subtitles';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
@@ -50,7 +51,7 @@ export function extractHtml(html: string, url?: string): Extracted {
 export async function extractFile(file: File): Promise<Extracted> {
   const filename = file.name;
   const extension = filename.split('.').pop()?.toLowerCase();
-  if (!['txt', 'md', 'markdown', 'html', 'htm', 'pdf', 'docx', 'epub', 'csv'].includes(extension || '')) {
+  if (!['txt', 'md', 'markdown', 'html', 'htm', 'pdf', 'docx', 'epub', 'csv', 'vtt', 'srt'].includes(extension || '')) {
     throw new Error(`Das Format .${extension || '?'} wird in dieser Entwicklungsstufe noch nicht unterstützt.`);
   }
   if (file.size > 25 * 1024 * 1024) throw new Error('Datei ist größer als das aktuelle Limit von 25 MiB.');
@@ -91,6 +92,7 @@ export async function extractFile(file: File): Promise<Extracted> {
     return { title: filename, kind: 'csv', body, warnings: [] };
   }
   const contents = await file.text();
+  if (extension === 'vtt' || extension === 'srt') return { title: filename, body: subtitleToText(contents), kind: 'subtitle', warnings: [] };
   if (extension === 'html' || extension === 'htm') {
     const result = htmlToMarkdown(contents);
     return { ...result, title: result.title === 'Webseite' ? filename : result.title, kind: 'html' };

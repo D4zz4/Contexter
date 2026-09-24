@@ -2,15 +2,16 @@
 
 Contexter sammelt Quellen lokal, extrahiert ihren vorhandenen Text und exportiert ihn mit Herkunftsangaben als Markdown, Klartext oder ZIP. Die App enthält keinen KI-Chat und erzeugt keine Zusammenfassungen.
 
-**Stand: 0.9.0-test.1.** Eine persönlich testbare Android-APK und eine Chromium-Erweiterung sind vorhanden. Dies ist noch keine öffentlich freigegebene 1.0: Ein Test auf einem echten Android-Gerät, schwierige Referenzdateien und Live-Tests der optionalen Anbieter mit eigenen API-Schlüsseln stehen aus. Die ursprüngliche Planungsbaseline steht unter [docs/README.md](docs/README.md); [docs/07-implementation-status.md](docs/07-implementation-status.md) hält den aktuellen Stand und spätere Produktentscheidungen fest.
+**Stand: 0.9.0-test.2.** Eine persönlich testbare Android-APK und eine Chromium-Erweiterung sind vorhanden. Dies ist noch keine öffentlich freigegebene 1.0: Ein Test auf einem echten Android-Gerät, schwierige Referenzdateien und Live-Tests der optionalen Anbieter mit eigenen API-Schlüsseln stehen aus. Die ursprüngliche Planungsbaseline steht unter [docs/README.md](docs/README.md); [docs/07-implementation-status.md](docs/07-implementation-status.md) hält den aktuellen Stand und spätere Produktentscheidungen fest.
 
 ## Was die Testversion kann
 
 - Inbox und Notebooks erstellen, umbenennen, archivieren und wiederherstellen; Quellen suchen, bearbeiten, verschieben, deaktivieren und in den Papierkorb legen.
-- Text und mehrere URLs importieren; TXT, Markdown, HTML, PDF mit Textschicht, DOCX, EPUB ohne DRM und CSV lokal verarbeiten. Nicht auslesbare oder gescannte PDF-Seiten brauchen später OCR.
+- Text und mehrere URLs importieren; TXT, Markdown, HTML, PDF mit Textschicht, DOCX, EPUB ohne DRM, CSV sowie VTT/SRT-Untertitel lokal verarbeiten. Nicht auslesbare oder gescannte PDF-Seiten brauchen später OCR.
 - Auf Android Text, Links und unterstützte Dateien aus anderen Apps über das Teilen-Menü empfangen. Eingänge werden vor der Verarbeitung app-intern zwischengespeichert und nach erfolgreichem Speichern quittiert.
 - In der Chromium-Erweiterung die Webseite übernehmen, von der aus das Erweiterungssymbol geöffnet wurde. Für beliebige URLs wird die jeweilige Website-Berechtigung angefragt.
 - Optional nach eigener Eingabe eines API-Schlüssels: native YouTube-Untertitel über Supadata, Kanal-/Playlist-Video-IDs, und Websuche über Brave Search. Diese Dienste können Kosten verursachen; ohne Schlüssel wird nichts an sie gesendet. Schlüssel werden nicht in Bibliothek oder Sicherung gespeichert.
+- Schlüsselfreier Zwischenweg für `yt-dlp`: Damit erzeugte `.vtt`- oder `.srt`-Dateien direkt importieren. Der Abruf durch `yt-dlp` läuft derzeit außerhalb von Contexter; die Android-Einbindung wird geprüft.
 - Aktive Quellen als eine `.md`, `.txt` oder ZIP mit Markdown-Einzeldateien ausgeben oder Markdown in die Zwischenablage kopieren. Auf Android öffnet sich für Dateien das Teilen-Menü: dort kannst du z. B. „Dateien“, E-Mail, Telegram oder eine Cloud-App wählen.
 - Die gesamte lokale Bibliothek als Sicherungs-ZIP ausgeben und auf einem anderen Gerät **manuell** zusammenführen oder ersetzen. Abweichende Fassungen bleiben beim Zusammenführen als Konfliktkopien erhalten. Es gibt keinen automatischen Cloud-Abgleich.
 

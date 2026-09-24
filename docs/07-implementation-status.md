@@ -1,6 +1,6 @@
 # Implementierungsstand und geänderte Entscheidung
 
-Stand: 24. September 2026 · 0.9.0-test.1
+Stand: 24. September 2026 · 0.9.0-test.2
 
 Die Dokumente 01–06 sind die historische Planungsbaseline vor dem Coding. Ihre Aussagen „noch nicht implementiert“ und die dortige automatische Synchronisationsarchitektur beschreiben nicht mehr den aktuellen Stand. Die laufende Implementierung ist im Root-README beschrieben.
 
@@ -8,7 +8,7 @@ Die spätere Entscheidung des Nutzers für 1.0 lautet: lokal speichern, Dateien 
 
 ## Bereits implementiert
 
-Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; IndexedDB-Bibliothek; lokale Quellverwaltung und Papierkorb; TXT/MD/HTML/PDF/DOCX/EPUB/CSV-Adapter; Web- und Erweiterungs-Tab-Erfassung; optionale Supadata- und Brave-Adapter; MD/TXT/ZIP-Export; vollständige Sicherung und Merge; Android-Share-Target mit persistierter Eingangsqueue. Unit- und Contract-Tests sowie Web-/Extension-/Android-Build laufen. Der Android-Emulator bestätigte den Empfang von Text und einer über `content://` freigegebenen CSV sowie die Quittierung nach Verarbeitung.
+Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; IndexedDB-Bibliothek; lokale Quellverwaltung und Papierkorb; TXT/MD/HTML/PDF/DOCX/EPUB/CSV/VTT/SRT-Adapter; Web- und Erweiterungs-Tab-Erfassung; optionale Supadata- und Brave-Adapter; MD/TXT/ZIP-Export; vollständige Sicherung und Merge; Android-Share-Target mit persistierter Eingangsqueue. Unit- und Contract-Tests sowie Web-/Extension-/Android-Build laufen. Der Android-Emulator bestätigte den Empfang von Text und einer über `content://` freigegebenen CSV sowie die Quittierung nach Verarbeitung.
 
 ## Vor einer öffentlichen 1.0 noch zu belegen
 

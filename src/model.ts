@@ -1,4 +1,4 @@
-export type SourceKind = 'web' | 'youtube' | 'text' | 'markdown' | 'html' | 'pdf' | 'docx' | 'epub' | 'csv';
+export type SourceKind = 'web' | 'youtube' | 'subtitle' | 'text' | 'markdown' | 'html' | 'pdf' | 'docx' | 'epub' | 'csv';
 export type SourceStatus = 'ready' | 'partial' | 'failed' | 'queued';
 
 export interface Notebook {

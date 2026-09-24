@@ -19,3 +19,13 @@ Die bereitgestellte `contexter-chrome-test.zip` zuerst entpacken. In `chrome://e
 Gerätemodell und Android-Version bzw. Chrome-Version; welche Eingabe geteilt oder importiert wurde (bei privaten Inhalten nur Dateityp/Größe nennen); erwartetes und tatsächliches Ergebnis; ob der Fehler nach Neustart wiederkehrt. API-Schlüssel niemals in Screenshots oder Fehlerberichte übernehmen.
 
 Bekannte Grenzen: reine Bild-PDFs ohne OCR; manche Websites blockieren automatisches Abrufen; DRM-EPUBs werden nicht unterstützt; Dateieingang bis 25 MiB; URL-Inhalt bis 10 MiB; kein automatischer Geräteabgleich. Optionale externe Anbieter sind ohne eigenen Schlüssel nicht live geprüft.
+
+## YouTube ohne API-Schlüssel: vorhandene Untertiteldatei übernehmen
+
+Falls du `yt-dlp` bereits verwendest, kannst du eine damit erzeugte `.vtt`- oder `.srt`-Datei in Contexter über „Quelle hinzufügen → Datei“ importieren oder auf Android an Contexter teilen. Zeitstempel und Text bleiben erhalten. Das ist noch kein direkter `yt-dlp`-Abruf in der App. `yt-dlp` unterstützt `--skip-download`, `--write-subs` und `--write-auto-subs`, um nur Untertitel zu speichern:
+
+```sh
+yt-dlp --skip-download --write-subs --write-auto-subs --sub-langs 'de.*,en.*' --sub-format vtt 'https://www.youtube.com/watch?v=VIDEO_ID'
+```
+
+Es werden nur Spuren ausgegeben, die für das Video tatsächlich erreichbar sind; es wird keine neue Transkription der Audiospur erzeugt.

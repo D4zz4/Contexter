@@ -9,7 +9,7 @@ function metadata(source: Source) {
     type: 'Reference',
     title: source.title,
     ...(source.originalUrl ? { resource: source.originalUrl, sources: [{ id: 'original', resource: source.originalUrl, title: source.title }] } : {}),
-    generated: { by: 'contexter/0.9.0-test.1', at: source.extractedAt || source.importedAt },
+    generated: { by: 'contexter/0.9.0-test.2', at: source.extractedAt || source.importedAt },
     cb_schema: 1,
     cb_id: source.id,
     cb_kind: source.kind,

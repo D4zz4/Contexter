@@ -28,6 +28,7 @@
                 <data android:mimeType="text/*" />
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/x-subrip" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
             </intent-filter>
 
@@ -37,6 +38,7 @@
                 <data android:mimeType="text/*" />
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/x-subrip" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
             </intent-filter>
 

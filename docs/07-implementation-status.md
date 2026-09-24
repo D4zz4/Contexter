@@ -1,6 +1,6 @@
 # Implementierungsstand und geänderte Entscheidung
 
-Stand: 24. September 2026 · 0.9.0-test.2
+Stand: 24. September 2026 · 0.9.0-test.3
 
 Die Dokumente 01–06 sind die historische Planungsbaseline vor dem Coding. Ihre Aussagen „noch nicht implementiert“ und die dortige automatische Synchronisationsarchitektur beschreiben nicht mehr den aktuellen Stand. Die laufende Implementierung ist im Root-README beschrieben.
 
@@ -8,7 +8,7 @@ Die spätere Entscheidung des Nutzers für 1.0 lautet: lokal speichern, Dateien 
 
 ## Bereits implementiert
 
-Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; IndexedDB-Bibliothek; lokale Quellverwaltung und Papierkorb; TXT/MD/HTML/PDF/DOCX/EPUB/CSV/VTT/SRT-Adapter; Web- und Erweiterungs-Tab-Erfassung; optionale Supadata- und Brave-Adapter; MD/TXT/ZIP-Export; vollständige Sicherung und Merge; Android-Share-Target mit persistierter Eingangsqueue. Unit- und Contract-Tests sowie Web-/Extension-/Android-Build laufen. Der Android-Emulator bestätigte den Empfang von Text und einer über `content://` freigegebenen CSV sowie die Quittierung nach Verarbeitung.
+Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; IndexedDB-Bibliothek; lokale Quellverwaltung und Papierkorb für Quellen und Notebooks; Notebook-Langdruck, Ziehen zum Sortieren und auf den Papierkorb; TXT/MD/HTML/PDF/DOCX/EPUB/CSV/VTT/SRT-Adapter; Web- und Erweiterungs-Tab-Erfassung; direkter Android-`yt-dlp`-Abruf von Untertiteln ohne API-Schlüssel; optionale Supadata- und Brave-Adapter; MD/TXT/ZIP-Export; vollständige Sicherung und Merge; Android-Share-Target mit persistierter Eingangsqueue. Unit- und Contract-Tests sowie Web-/Extension-/Android-Build laufen. Der Android-Emulator bestätigte den Empfang von Text und einer über `content://` freigegebenen CSV, die Quittierung nach Verarbeitung, den Abruf englischer YouTube-Untertitel und den Notebook-Papierkorb.
 
 ## Vor einer öffentlichen 1.0 noch zu belegen
 
@@ -16,6 +16,7 @@ Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; I
 - Inhaltstreue der Parser an schwierigeren PDF-, DOCX-, EPUB- und Webseiten-Beispielen. OCR für reine Bild-PDFs ist nicht enthalten.
 - Live-Verhalten der optionalen Anbieter mit vom Nutzer bewusst eingegebenen API-Schlüsseln und realen Limits/Kosten. Die Tests verwenden nur synthetische Antworten.
 - Prüfung der Erweiterung im tatsächlichen Chrome-UI, einschließlich Berechtigung für den zuvor geöffneten Tab.
+- Direkten `yt-dlp`-Abruf auf einem echten Gerät und mehreren Videos testen. YouTube kann Untertitel mit HTTP 403/429 blockieren; die eingebettete Laufzeit unterstützt nur 64-Bit-Android (arm64-v8a/x86_64).
 - Vor einer Veröffentlichung: eigenständige Signierung, Updatepfad, Datenschutz- und Lizenzprüfung. Die Debug-APK ist keine Store-Version.
 
 ## Bewusste Abweichungen von der frühen Architektur

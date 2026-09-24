@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { bundleMarkdown, bundleText, bundleZip, deliverFile, safeFilename } from './export';
 import { extractActiveTab, extractFile, extractUrl } from './extract';
-import { createNotebook, createSource, emptyLibrary, findDuplicate, INBOX_ID, metrics, type Library, type Source } from './model';
+import { createNotebook, createSource, emptyLibrary, findDuplicate, INBOX_ID, metrics, reorderNotebook, restoreNotebook, trashNotebook, type Library, type Source } from './model';
 import { loadLibrary, saveLibrary } from './storage';
 import { isNative, shareInbox, sharedFile, sharedText } from './share-inbox';
 import { backupLibrary, mergeLibraries, readLibraryBackup } from './backup';
 import { braveSearch, isYouTubeVideoUrl, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
+import { youtubeTranscriptLocal } from './ytdlp';
 import './styles.css';
 
-type Dialog = 'add' | 'export' | 'notebook' | 'trash' | 'manage' | 'shares' | null;
+type Dialog = 'add' | 'export' | 'notebook' | 'notebookActions' | 'trash' | 'manage' | 'shares' | null;
 type AddTab = 'url' | 'text' | 'file' | 'youtube' | 'search';
 
 const localeDate = (value?: string) => value ? new Date(value).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -29,6 +30,12 @@ export default function App() {
   const [selectedNotebook, setSelectedNotebook] = useState(INBOX_ID);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [contextNotebookId, setContextNotebookId] = useState<string | null>(null);
+  const [draggedNotebookId, setDraggedNotebookId] = useState<string | null>(null);
+  const [dragHover, setDragHover] = useState<string | null>(null);
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const notebookPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNotebookClick = useRef(false);
   const [addTab, setAddTab] = useState<AddTab>('url');
   const [notebookName, setNotebookName] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -37,6 +44,7 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'title'>('newest');
   const [supadataKey, setSupadataKey] = useState('');
+  const [subtitleLanguage, setSubtitleLanguage] = useState<'de' | 'en'>('de');
   const [braveKey, setBraveKey] = useState('');
   const [discoveryQuery, setDiscoveryQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -103,6 +111,42 @@ export default function App() {
   const activeSources = allSources.filter(item => item.enabled && (item.status === 'ready' || item.status === 'partial'));
   const tokenCount = activeSources.reduce((sum, item) => sum + metrics(item.body).tokens, 0);
   const source = library.sources.find(item => item.id === selectedSource && item.notebookId === notebook?.id);
+  const contextNotebook = library.notebooks.find(item => item.id === contextNotebookId && !item.deletedAt);
+  const deletedNotebooks = library.notebooks.filter(item => item.deletedAt);
+  const deletedSources = library.sources.filter(item => item.deletedAt);
+
+  function cancelNotebookPress() {
+    if (notebookPressTimer.current) clearTimeout(notebookPressTimer.current);
+    notebookPressTimer.current = null;
+  }
+
+  function openNotebookActions(id: string) {
+    cancelNotebookPress();
+    suppressNotebookClick.current = true;
+    setTimeout(() => { suppressNotebookClick.current = false; }, 1000);
+    setContextNotebookId(id);
+    setDialog('notebookActions');
+  }
+
+  function startNotebookPress(id: string) {
+    cancelNotebookPress();
+    notebookPressTimer.current = setTimeout(() => openNotebookActions(id), 550);
+  }
+
+  function dropTarget(x: number, y: number): string | null {
+    const element = document.elementFromPoint(x, y);
+    if (element?.closest('[data-drop-trash]')) return 'trash';
+    return element?.closest('[data-notebook-id]')?.getAttribute('data-notebook-id') || null;
+  }
+
+  function endNotebookDrag(id: string, x: number, y: number) {
+    const target = dropTarget(x, y);
+    setDraggedNotebookId(null);
+    setDragHover(null);
+    setDragPosition(null);
+    if (target === 'trash') void deleteNotebook(id);
+    else if (target && target !== id) void commit(value => reorderNotebook(value, id, target));
+  }
 
   async function handleUrls() {
     const urls = urlInput.split(/\s+/).map(item => item.trim()).filter(Boolean);
@@ -112,7 +156,7 @@ export default function App() {
     const errors: string[] = [];
     for (const url of urls) {
       try {
-        if (isYouTubeVideoUrl(url)) throw new Error('Für YouTube-Untertitel bitte den Tab „YouTube“ mit eigenem API-Schlüssel verwenden.');
+        if (isYouTubeVideoUrl(url)) throw new Error('Für YouTube-Untertitel bitte den Tab „YouTube“ verwenden.');
         const extracted = await extractUrl(url);
         const added = await addSource(createSource({ notebookId: notebook.id, kind: extracted.kind, title: extracted.title, body: extracted.body, originalUrl: url, author: extracted.author, warnings: extracted.warnings, status: extracted.warnings.length ? 'partial' : 'ready' }));
         if (added) success++;
@@ -159,11 +203,11 @@ export default function App() {
     if (added) { setTextInput(''); setTextTitle(''); setDialog(null); }
   }
 
-  async function handleYouTube() {
+  async function handleYouTube(method: 'local' | 'supadata') {
     if (!urlInput.trim()) return;
     setBusy(true);
     try {
-      const result = await youtubeTranscript(urlInput.trim(), supadataKey);
+      const result = method === 'local' ? await youtubeTranscriptLocal(urlInput.trim(), subtitleLanguage) : await youtubeTranscript(urlInput.trim(), supadataKey);
       await addSource(createSource({ notebookId: notebook.id, kind: 'youtube', title: result.title, body: result.body, originalUrl: urlInput.trim(), author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }));
       setUrlInput('');
       setDialog(null);
@@ -341,7 +385,10 @@ export default function App() {
   }
 
   async function restoreSource(item: Source) {
-    await commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, deletedAt: undefined } : current) }));
+    await commit(value => {
+      const restored = restoreNotebook(value, item.notebookId);
+      return { ...restored, notebooks: restored.notebooks.map(current => current.id === item.notebookId ? { ...current, archived: false } : current), sources: value.sources.map(current => current.id === item.id ? { ...current, deletedAt: undefined } : current) };
+    });
     setDialog(null);
     setSelectedNotebook(item.notebookId);
     setSelectedSource(item.id);
@@ -379,11 +426,30 @@ export default function App() {
     setNotice('Notebook wiederhergestellt.');
   }
 
+  async function deleteNotebook(id: string) {
+    const item = libraryRef.current.notebooks.find(current => current.id === id);
+    if (!item || item.id === INBOX_ID || item.deletedAt) return;
+    const count = libraryRef.current.sources.filter(source => source.notebookId === id && !source.deletedAt).length;
+    if (!window.confirm(`Notebook „${item.title}“ mit ${count} Quelle(n) in den Papierkorb verschieben? Alles kann dort wiederhergestellt werden.`)) return;
+    await commit(value => trashNotebook(value, id));
+    if (selectedNotebook === id) setSelectedNotebook(INBOX_ID);
+    setSelectedSource(null);
+    setDialog(null);
+    setNotice('Notebook mit seinen Quellen im Papierkorb.');
+  }
+
+  async function undeleteNotebook(id: string) {
+    await commit(value => restoreNotebook(value, id));
+    setSelectedNotebook(id);
+    setDialog(null);
+    setNotice('Notebook mit seinen Quellen wiederhergestellt.');
+  }
+
   async function reprocessSource(item: Source) {
     if (!item.originalUrl) return;
     setBusy(true);
     try {
-      const extracted = item.kind === 'youtube' ? await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
+      const extracted = item.kind === 'youtube' ? item.provider === 'yt-dlp-local' && isNative ? await youtubeTranscriptLocal(item.originalUrl, item.language === 'en' ? 'en' : 'de') : await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
       if (item.editedByUser) {
         const copy = createSource({ notebookId: item.notebookId, kind: extracted.kind, title: `${extracted.title} (Neu extrahiert)`, body: extracted.body, originalUrl: item.originalUrl, author: extracted.author, conflictOf: item.id, warnings: [...extracted.warnings, 'Manuell bearbeitete Fassung wurde nicht überschrieben.'], status: 'partial' });
         await commit(value => ({ ...value, sources: [...value.sources, copy] }));
@@ -422,12 +488,15 @@ export default function App() {
       <div className="side-label">ARBEITSBEREICH</div>
       <button className={`nav-item ${selectedNotebook === INBOX_ID ? 'current' : ''}`} onClick={() => { setSelectedNotebook(INBOX_ID); setSelectedSource(null); }}><span className="nav-symbol">⌑</span> Inbox <span className="nav-count">{library.sources.filter(item => !item.deletedAt && item.notebookId === INBOX_ID).length}</span></button>
       <div className="side-label side-label-row"><span>NOTEBOOKS</span><button className="icon-button" onClick={() => setDialog('notebook')} aria-label="Notebook erstellen">+</button></div>
-      <nav className="notebook-nav">
-        {library.notebooks.filter(item => item.id !== INBOX_ID && !item.archived).map(item => <button key={item.id} className={`nav-item ${selectedNotebook === item.id ? 'current' : ''}`} onClick={() => { setSelectedNotebook(item.id); setSelectedSource(null); }}><span className="nav-symbol">▤</span><span className="truncate">{item.title}</span><span className="nav-count">{library.sources.filter(source => !source.deletedAt && source.notebookId === item.id).length}</span></button>)}
+      <nav className="notebook-nav" aria-label="Notebooks">
+        {library.notebooks.filter(item => item.id !== INBOX_ID && !item.archived && !item.deletedAt).map(item => <div key={item.id} data-notebook-id={item.id} className={`notebook-row ${draggedNotebookId === item.id ? 'dragging' : ''} ${dragHover === item.id && draggedNotebookId !== item.id ? 'drop-hover' : ''}`}>
+          <button className={`nav-item ${selectedNotebook === item.id ? 'current' : ''}`} onClick={() => { if (suppressNotebookClick.current) { suppressNotebookClick.current = false; return; } setSelectedNotebook(item.id); setSelectedSource(null); }} onPointerDown={() => startNotebookPress(item.id)} onPointerUp={cancelNotebookPress} onPointerLeave={cancelNotebookPress} onPointerCancel={cancelNotebookPress} onContextMenu={event => { event.preventDefault(); openNotebookActions(item.id); }} title="Öffnen; lange drücken für Aktionen"><span className="nav-symbol">▤</span><span className="truncate">{item.title}</span><span className="nav-count">{library.sources.filter(source => !source.deletedAt && source.notebookId === item.id).length}</span></button>
+          <button className="notebook-grip" aria-label={`${item.title} ziehen und sortieren`} title="Zum Sortieren oder in den Papierkorb ziehen" onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDraggedNotebookId(item.id); setDragPosition({ x: event.clientX, y: event.clientY }); }} onPointerMove={event => { if (draggedNotebookId !== item.id) return; setDragPosition({ x: event.clientX, y: event.clientY }); setDragHover(dropTarget(event.clientX, event.clientY)); }} onPointerUp={event => { if (draggedNotebookId === item.id) endNotebookDrag(item.id, event.clientX, event.clientY); }} onPointerCancel={() => { setDraggedNotebookId(null); setDragHover(null); setDragPosition(null); }}>⋮⋮</button>
+        </div>)}
       </nav>
       <button className="side-new" onClick={() => setDialog('notebook')}>+ Neues Notebook</button>
       <button className="side-new" onClick={() => { setNotebookName(notebook.title); setDialog('manage'); }}>Notebooks verwalten</button>
-      <button className="side-new" onClick={() => setDialog('trash')}>Papierkorb · {library.sources.filter(item => item.deletedAt).length}</button>
+      <button className={`side-new trash-drop ${dragHover === 'trash' ? 'drop-hover' : ''}`} data-drop-trash onClick={() => setDialog('trash')}>Papierkorb · {deletedSources.length + deletedNotebooks.length}</button>
       {shareErrors.length > 0 && <button className="side-new" onClick={() => setDialog('shares')}>Geteilte Eingänge · {shareErrors.length} Fehler</button>}
       <div className="sidebar-bottom"><div className="privacy-dot" /> Lokal gespeichert <span className="beta-tag">TEST</span></div>
     </aside>
@@ -435,7 +504,7 @@ export default function App() {
     <main className="main">
       <header className="topbar"><div className="breadcrumbs">LIBRARY <span>/</span> <strong>{notebook?.title}</strong></div><div className="top-actions"><span className="local-badge">● &nbsp;Auf diesem Gerät</span><button className="button subtle" onClick={() => setDialog('export')}>↗ &nbsp; Exportieren</button></div></header>
       <div className="workspace">
-        <div className="page-heading"><div><div className="eyebrow">DEINE SAMMLUNG</div><h1>{notebook?.title}</h1><p>Quellen sammeln, prüfen und als portablen Kontext mitnehmen.</p></div><button className="button primary" onClick={() => setDialog('add')}>＋ &nbsp; Quelle hinzufügen</button></div>
+        <div className="page-heading"><div><div className="eyebrow">DEINE SAMMLUNG</div><h1>{notebook?.title}</h1><p>{notebook?.id === INBOX_ID ? 'Eingangskorb für geteilte Links, Texte und Dateien. Öffne eine Quelle und verschiebe sie bei Bedarf in ein Notebook.' : 'Quellen sammeln, prüfen und als portablen Kontext mitnehmen.'}</p></div><button className="button primary" onClick={() => setDialog('add')}>＋ &nbsp; Quelle hinzufügen</button></div>
         <div className="stat-grid"><div className="stat"><span>QUELLEN</span><strong>{allSources.length}</strong><small>{activeSources.length} aktiv für den Export</small></div><div className="stat"><span>GESCHÄTZTE TOKENS</span><strong>{new Intl.NumberFormat('de-DE').format(tokenCount)}</strong><small>Grobe Schätzung · ≈ 4 Zeichen/Token</small></div><div className="stat accent"><span>DEIN KONTEXT</span><strong>Bereit zum Export</strong><small>Markdown · Text · ZIP · Zwischenablage</small></div></div>
         <div className="content-card"><div className="list-head"><div><h2>Quellen <span className="heading-count">{allSources.length}</span></h2><p>Jede Quelle bleibt mit ihrem Ursprung verbunden.</p></div><div className="list-actions"><input className="search" type="search" placeholder="Quellen suchen …" value={query} onChange={event => setQuery(event.target.value)} aria-label="Quellen suchen" /><select className="sort-select" aria-label="Quellen sortieren" value={sort} onChange={event => setSort(event.target.value as typeof sort)}><option value="newest">Neueste</option><option value="oldest">Älteste</option><option value="title">Titel A–Z</option></select><button className="button subtle" onClick={() => setDialog('add')}>+ Hinzufügen</button></div></div>
           {!loaded ? <div className="empty">Bibliothek wird geladen …</div> : visibleSources.length === 0 ? <div className="empty"><div className="empty-symbol">▣</div><h3>{query ? 'Keine passende Quelle' : 'Hier beginnt dein Kontext'}</h3><p>{query ? 'Versuche einen anderen Suchbegriff.' : 'Füge eine Webseite, eine Datei oder eigenen Text hinzu.'}</p>{!query && <button className="button primary" onClick={() => setDialog('add')}>Erste Quelle hinzufügen</button>}</div> : <div className="source-list">{visibleSources.map(item => <div key={item.id} className={`source-row ${selectedSource === item.id ? 'selected' : ''}`}><label className="checkbox-wrap" title="Für Export aktiv"><input type="checkbox" checked={item.enabled} onChange={() => void commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, enabled: !current.enabled } : current) }))} aria-label={`${item.title} für Export aktiv`} /></label><button className="source-open" onClick={() => { setSelectedSource(item.id); setEditing(false); }}><span className={`type-icon type-${item.kind}`}>{item.kind === 'web' ? '◈' : item.kind === 'youtube' ? '▶' : '▤'}</span><span className="source-meta"><strong>{item.title}</strong><small>{originLabel(item.originalUrl) || item.originalFilename || 'Eingefügter Text'} · {localeDate(item.importedAt)}</small></span></button><span className={`status ${item.status}`}>{item.status === 'partial' ? 'Hinweis' : item.status === 'failed' ? 'Fehler' : item.status === 'queued' ? 'Wartet' : 'Bereit'}</span><span className="row-tokens">~{new Intl.NumberFormat('de-DE').format(metrics(item.body).tokens)} Token</span></div>)}</div>}
@@ -446,13 +515,14 @@ export default function App() {
     {source && <div className="detail-backdrop" onClick={() => setSelectedSource(null)}><section className="detail-panel" onClick={event => event.stopPropagation()} aria-label="Quelle ansehen">
       <div className="detail-top"><span>QUELLENDETAIL</span><button className="icon-button" onClick={() => setSelectedSource(null)} aria-label="Schließen">×</button></div>
       <div className="detail-scroll"><div className="detail-kicker">{source.kind.toUpperCase()} · {localeDate(source.importedAt)}</div><h2>{source.title}</h2>{source.originalUrl && <a className="original-link" href={source.originalUrl} target="_blank" rel="noreferrer">Original öffnen ↗</a>}{source.warnings.map((warning, index) => <div className="warning" key={index}>⚠ {warning}</div>)}<div className="detail-metrics">{metrics(source.body).words} Wörter <span>·</span> ~{metrics(source.body).tokens} Token <span>·</span> {source.editedByUser ? 'Manuell bearbeitet' : 'Extrahiert'}</div>{editing ? <textarea className="editor" value={draft} onChange={event => setDraft(event.target.value)} aria-label="Quelleninhalt bearbeiten" /> : <pre className="body-preview">{source.body}</pre>}</div>
-      <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
+      <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived && !item.deletedAt).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
     </section></div>}
 
-    {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen'}</h2></div><button className="icon-button" onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
+    {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen'}</h2></div><button className="icon-button" onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
+      {dialog === 'notebookActions' && contextNotebook && <div className="modal-body"><p className="helper">{contextNotebook.title} · {library.sources.filter(item => item.notebookId === contextNotebook.id && !item.deletedAt).length} Quellen</p><div className="notebook-action-list"><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setDialog(null); }}>Öffnen</button><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setNotebookName(contextNotebook.title); setDialog('manage'); }}>Umbenennen / archivieren</button><button className="button danger" onClick={() => void deleteNotebook(contextNotebook.id)}>In den Papierkorb</button></div><p className="helper">Zum Sortieren oder Löschen kannst du das Griffsymbol ⋮⋮ neben dem Notebook ziehen.</p></div>}
       {dialog === 'shares' && <div className="modal-body"><p className="helper">Diese Eingänge bleiben erhalten, bis der Import gelingt oder du sie ausdrücklich verwirfst. Spätere Eingänge werden trotzdem weiterverarbeitet.</p><div className="trash-list">{shareErrors.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{item.message}</small></span><button className="button danger" onClick={() => void discardSharedItem(item.id)}>Verwerfen</button></div>)}</div><button className="button primary wide" onClick={() => setShareRetry(value => value + 1)}>Erneut versuchen</button></div>}
-      {dialog === 'trash' && <div className="modal-body"><p className="helper">Gelöschte Quellen bleiben in Sicherungen erhalten und können hier wiederhergestellt werden.</p>{library.sources.filter(item => item.deletedAt).length === 0 ? <p className="helper">Der Papierkorb ist leer.</p> : <div className="trash-list">{library.sources.filter(item => item.deletedAt).map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{library.notebooks.find(book => book.id === item.notebookId)?.title || 'Unbekanntes Notebook'}</small></span><button className="button subtle" onClick={() => void restoreSource(item)}>Wiederherstellen</button></div>)}</div>}</div>}
-      {dialog === 'manage' && <div className="modal-body">{notebook.id !== INBOX_ID && <><label>AKTUELLES NOTEBOOK<input value={notebookName} onChange={event => setNotebookName(event.target.value)} /></label><div className="modal-actions"><button className="button danger" onClick={() => void archiveNotebook()}>Archivieren</button><button className="button primary" disabled={!notebookName.trim()} onClick={() => void renameNotebook()}>Umbenennen</button></div></>}<div className="backup-section"><h3>Archivierte Notebooks</h3>{library.notebooks.filter(item => item.archived).length === 0 ? <p>Keine archivierten Notebooks.</p> : <div className="trash-list">{library.notebooks.filter(item => item.archived).map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length} Quellen</small></span><button className="button subtle" onClick={() => void unarchiveNotebook(item.id)}>Wiederherstellen</button></div>)}</div>}</div></div>}
+      {dialog === 'trash' && <div className="modal-body"><p className="helper">Notebooks und Quellen bleiben lokal erhalten, bis du sie wiederherstellst. Eine Sicherungs-ZIP enthält sie ebenfalls.</p>{deletedNotebooks.length + deletedSources.length === 0 ? <p className="helper">Der Papierkorb ist leer.</p> : <div className="trash-list">{deletedNotebooks.map(item => <div key={item.id}><span><strong>▤ {item.title}</strong><small>Notebook · {library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length} Quellen</small></span><button className="button subtle" onClick={() => void undeleteNotebook(item.id)}>Wiederherstellen</button></div>)}{deletedSources.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>Quelle · {library.notebooks.find(book => book.id === item.notebookId)?.title || 'Unbekanntes Notebook'}</small></span><button className="button subtle" onClick={() => void restoreSource(item)}>Wiederherstellen</button></div>)}</div>}</div>}
+      {dialog === 'manage' && <div className="modal-body">{notebook.id !== INBOX_ID && <><label>AKTUELLES NOTEBOOK<input value={notebookName} onChange={event => setNotebookName(event.target.value)} /></label><div className="modal-actions"><button className="button danger" onClick={() => void deleteNotebook(notebook.id)}>Löschen</button><button className="button subtle" onClick={() => void archiveNotebook()}>Archivieren</button><button className="button primary" disabled={!notebookName.trim()} onClick={() => void renameNotebook()}>Umbenennen</button></div></>}<div className="backup-section"><h3>Archivierte Notebooks</h3>{library.notebooks.filter(item => item.archived && !item.deletedAt).length === 0 ? <p>Keine archivierten Notebooks.</p> : <div className="trash-list">{library.notebooks.filter(item => item.archived && !item.deletedAt).map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length} Quellen</small></span><button className="button subtle" onClick={() => void unarchiveNotebook(item.id)}>Wiederherstellen</button></div>)}</div>}</div></div>}
       {dialog === 'notebook' && <div className="modal-body"><label>NAME DES NOTEBOOKS<input autoFocus value={notebookName} placeholder="z. B. Context Engineering" onChange={event => setNotebookName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && notebookName.trim()) { const item = createNotebook(notebookName); void commit(value => ({ ...value, notebooks: [...value.notebooks, item] })); setSelectedNotebook(item.id); setNotebookName(''); setDialog(null); } }} /></label><button className="button primary wide" disabled={!notebookName.trim()} onClick={() => { const item = createNotebook(notebookName); void commit(value => ({ ...value, notebooks: [...value.notebooks, item] })); setSelectedNotebook(item.id); setNotebookName(''); setDialog(null); }}>Notebook erstellen</button></div>}
       {dialog === 'add' && <div className="modal-body">
         <div className="tabs">
@@ -466,10 +536,12 @@ export default function App() {
         {addTab === 'file' && <><p className="helper">TXT, Markdown, HTML, PDF, DOCX, EPUB, CSV sowie Untertiteldateien (VTT/SRT) werden lokal verarbeitet.</p><input ref={fileInput} type="file" accept=".txt,.md,.markdown,.html,.htm,.pdf,.docx,.epub,.csv,.vtt,.srt" multiple onChange={event => void handleFiles(event.target.files)} /><button className="button primary wide" disabled={busy} onClick={() => fileInput.current?.click()}>{busy ? 'Verarbeite Dateien …' : 'Dateien auswählen'}</button></>}
         {addTab === 'text' && <><label>TITEL<input placeholder="Titel deiner Quelle" value={textTitle} onChange={event => setTextTitle(event.target.value)} /></label><label>INHALT<textarea rows={7} placeholder="Text hier einfügen …" value={textInput} onChange={event => setTextInput(event.target.value)} /></label><button className="button primary wide" onClick={() => void handleText()}>Text hinzufügen</button></>}
         {addTab === 'youtube' && <>
-          <p className="helper">Optionaler externer Dienst: Erst nach Klick werden Links an Supadata übertragen. Nur vorhandene Untertitel, keine KI-Transkription. Abrufe können Kosten verursachen. Der Schlüssel bleibt nur im Arbeitsspeicher.</p>
-          <label>SUPADATA API-SCHLÜSSEL<input type="password" autoComplete="off" value={supadataKey} onChange={event => setSupadataKey(event.target.value)} /></label>
           <label>VIDEO-URL<input placeholder="https://www.youtube.com/watch?v=…" value={urlInput} onChange={event => setUrlInput(event.target.value)} /></label>
-          <button className="button primary wide" disabled={busy || !urlInput.trim() || !supadataKey.trim()} onClick={() => void handleYouTube()}>{busy ? 'Lade Untertitel …' : 'Untertitel laden'}</button>
+          {isNative && <><p className="helper">Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Es wird nur eine vorhandene Untertitelsprache geladen, kein Video und keine KI-Transkription. YouTube kann Abrufe blockieren oder begrenzen.</p><label>UNTERTITELSPRACHE<select value={subtitleLanguage} onChange={event => setSubtitleLanguage(event.target.value as 'de' | 'en')}><option value="de">Deutsch</option><option value="en">Englisch</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube('local')}>{busy ? 'Lade Untertitel …' : 'Untertitel ohne API-Schlüssel laden'}</button></>}
+          {!isNative && <p className="helper">Im Browser kannst du Untertiteldateien (VTT/SRT) ohne Schlüssel im Tab „Datei“ importieren. Der direkte yt-dlp-Abruf ist nur in der Android-App möglich.</p>}
+          <div className="backup-section"><h3>Optional: Supadata</h3><p>Nur wenn du den folgenden Schlüssel eingibst und „Über Supadata laden“ wählst, wird der Link an diesen externen Dienst übertragen. Abrufe können Kosten verursachen. Der Schlüssel bleibt nur im Arbeitsspeicher.</p>
+          <label>SUPADATA API-SCHLÜSSEL<input type="password" autoComplete="off" value={supadataKey} onChange={event => setSupadataKey(event.target.value)} /></label>
+          <button className="button subtle wide" disabled={busy || !urlInput.trim() || !supadataKey.trim()} onClick={() => void handleYouTube('supadata')}>Über Supadata laden</button></div>
           <div className="backup-section"><h3>Kanal oder Playlist</h3><p>Die Liste und deine Auswahl bleiben lokal gespeichert. Bereits importierte Videos werden vor kostenpflichtigen Abrufen übersprungen.</p>
             <label>KANAL- ODER PLAYLIST-URL<input placeholder="https://www.youtube.com/playlist?list=…" value={catalogUrl} onChange={event => setCatalogUrl(event.target.value)} /></label>
             <label>MAXIMAL ANZEIGEN (1–5000)<input type="number" min={1} max={5000} value={catalogLimit} onChange={event => setCatalogLimit(Math.max(1, Math.min(5000, Number(event.target.value) || 1)))} /></label>
@@ -482,6 +554,7 @@ export default function App() {
       </div>}
       {dialog === 'export' && <div className="modal-body"><p className="helper">{activeSources.length} aktive Quellen · ungefähr {new Intl.NumberFormat('de-DE').format(tokenCount)} Tokens. Deaktivierte Quellen bleiben außerhalb des Exports.</p><div className="export-options"><button onClick={() => void exportAs('md')}><span>▤</span><strong>Eine Markdown-Datei</strong><small>Alle Quellen mit Herkunft und YAML-Manifest</small></button><button onClick={() => void exportAs('txt')}><span>≡</span><strong>Eine Textdatei</strong><small>Lesbarer Text mit Quellenangaben</small></button><button onClick={() => void exportAs('zip')}><span>▣</span><strong>ZIP mit Einzeldateien</strong><small>OKF-orientiertes Markdown-Bundle</small></button><button onClick={() => void exportAs('copy')}><span>⧉</span><strong>In Zwischenablage kopieren</strong><small>Markdown direkt weiterverwenden</small></button></div><div className="backup-section"><h3>Bibliothek sichern und abgleichen</h3><p>Alle Notebooks und Quellen als ZIP sichern. Auf einem anderen Gerät kannst du die Datei zusammenführen; abweichende Versionen bleiben als Konfliktkopien erhalten.</p><input ref={backupInput} type="file" accept=".zip,.json" aria-label="Sicherung auswählen" onChange={event => void restoreBackup(event.target.files?.[0])} /><div className="modal-actions"><button className="button subtle" onClick={() => { restoreMode.current = 'merge'; backupInput.current?.click(); }}>Zusammenführen</button><button className="button danger" onClick={() => { restoreMode.current = 'replace'; backupInput.current?.click(); }}>Ersetzen</button><button className="button primary" onClick={() => void saveBackup()}>Sicherung speichern / teilen</button></div></div></div>}
     </section></div>}
+    {draggedNotebookId && dragPosition && <div className="notebook-drag-ghost" style={{ left: dragPosition.x + 12, top: dragPosition.y + 12 }}>{library.notebooks.find(item => item.id === draggedNotebookId)?.title}</div>}
     {notice && <div className="toast" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Meldung schließen">×</button></div>}
   </div>;
 }

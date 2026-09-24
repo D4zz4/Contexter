@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { backupLibrary, mergeLibraries, parseLibraryBackup } from './backup';
-import { createSource, emptyLibrary } from './model';
+import { createSource, emptyLibrary, trashNotebook } from './model';
 
 describe('library backup', () => {
   it('roundtrips the full library without dropping edited content', async () => {
@@ -12,6 +12,17 @@ describe('library backup', () => {
     expect(json).toBeTruthy();
     expect(parseLibraryBackup(json!)).toEqual(library);
     expect(await archive.file(`notebooks/inbox/sources/${library.sources[0].id}.md`)?.async('string')).toContain('Eigener Inhalt');
+  });
+
+  it('retains deleted notebooks and their sources in the backup', async () => {
+    const library = emptyLibrary();
+    library.notebooks.push({ id: 'notes', title: 'Notizen', createdAt: '2026-09-24' });
+    library.sources.push(createSource({ notebookId: 'notes', kind: 'text', title: 'Quelle', body: 'Bleibt erhalten' }));
+    const deleted = trashNotebook(library, 'notes', '2026-09-24T01:00:00Z');
+    const archive = await JSZip.loadAsync(await backupLibrary(deleted));
+    const json = await archive.file('contexter-library.json')!.async('string');
+    expect(parseLibraryBackup(json)).toEqual(deleted);
+    expect(await archive.file('notebooks/notes/index.md')!.async('string')).toContain('Notebook im Papierkorb');
   });
 
   it('rejects a source pointing at an absent notebook', () => {

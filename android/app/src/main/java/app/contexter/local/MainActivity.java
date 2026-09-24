@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ShareInboxPlugin.class);
+        registerPlugin(YtDlpPlugin.class);
         super.onCreate(savedInstanceState);
         ShareInboxPlugin.capture(this, getIntent());
     }

@@ -9,6 +9,8 @@ Die bereitgestellte `contexter-android-test.apk` auf das Android-Gerät übertra
 3. Im Notebook „Exportieren“ wählen und Markdown oder ZIP an „Dateien“, E-Mail, Telegram oder eine Cloud-App geben. Contexter wählt keinen Dienst automatisch.
 4. Über „Exportieren → Sicherung speichern / teilen“ eine Sicherungs-ZIP außerhalb der App ablegen. Auf dem zweiten Gerät dieselbe APK installieren, die ZIP dorthin übertragen und in Contexter „Exportieren → Zusammenführen“ wählen. Für eine vollständige Wiederherstellung statt Merge „Ersetzen“ verwenden; das überschreibt die dortige Bibliothek nach Bestätigung.
 5. Nach App-Neustart prüfen, ob Notebooks und Texte erhalten geblieben sind. Zum Konflikttest dieselbe Quelle auf beiden Geräten verschieden bearbeiten, eine Sicherung übertragen und zusammenführen; beide Fassungen sollten sichtbar bleiben.
+6. Ein Notebook lange drücken: Das Aktionsfenster sollte „In den Papierkorb“ anbieten. Nach Bestätigung über „Papierkorb“ wiederherstellen. Über das Griffsymbol ⋮⋮ kannst du ein Notebook auf ein anderes ziehen, um es zu sortieren, oder auf den Papierkorb, um es nach Bestätigung zu löschen. Die Quellen bleiben dabei erhalten.
+7. „Quelle hinzufügen → YouTube“ öffnen, eine Video-URL eingeben, Deutsch oder Englisch wählen und „Untertitel ohne API-Schlüssel laden“ wählen. Nur vorhandene Untertitel werden geladen; YouTube kann einzelne Abrufe mit HTTP 403/429 blockieren.
 
 ## Chromium-Erweiterung
 
@@ -18,11 +20,11 @@ Die bereitgestellte `contexter-chrome-test.zip` zuerst entpacken. In `chrome://e
 
 Gerätemodell und Android-Version bzw. Chrome-Version; welche Eingabe geteilt oder importiert wurde (bei privaten Inhalten nur Dateityp/Größe nennen); erwartetes und tatsächliches Ergebnis; ob der Fehler nach Neustart wiederkehrt. API-Schlüssel niemals in Screenshots oder Fehlerberichte übernehmen.
 
-Bekannte Grenzen: reine Bild-PDFs ohne OCR; manche Websites blockieren automatisches Abrufen; DRM-EPUBs werden nicht unterstützt; Dateieingang bis 25 MiB; URL-Inhalt bis 10 MiB; kein automatischer Geräteabgleich. Optionale externe Anbieter sind ohne eigenen Schlüssel nicht live geprüft.
+Bekannte Grenzen: reine Bild-PDFs ohne OCR; manche Websites und YouTube blockieren automatisches Abrufen; DRM-EPUBs werden nicht unterstützt; Dateieingang bis 25 MiB; URL-Inhalt bis 10 MiB; kein automatischer Geräteabgleich. Der direkte yt-dlp-Abruf ist nur in der 64-Bit-Android-App integriert, nicht in der Chromium-Erweiterung. Optionale externe Anbieter sind ohne eigenen Schlüssel nicht live geprüft.
 
-## YouTube ohne API-Schlüssel: vorhandene Untertiteldatei übernehmen
+## YouTube ohne API-Schlüssel: Ausweichweg über Untertiteldatei
 
-Falls du `yt-dlp` bereits verwendest, kannst du eine damit erzeugte `.vtt`- oder `.srt`-Datei in Contexter über „Quelle hinzufügen → Datei“ importieren oder auf Android an Contexter teilen. Zeitstempel und Text bleiben erhalten. Das ist noch kein direkter `yt-dlp`-Abruf in der App. `yt-dlp` unterstützt `--skip-download`, `--write-subs` und `--write-auto-subs`, um nur Untertitel zu speichern:
+Falls ein direkter Abruf scheitert oder du die Chromium-Erweiterung verwendest, kannst du eine mit `yt-dlp` erzeugte `.vtt`- oder `.srt`-Datei in Contexter über „Quelle hinzufügen → Datei“ importieren oder auf Android an Contexter teilen. Zeitstempel und Text bleiben erhalten. `yt-dlp` unterstützt `--skip-download`, `--write-subs` und `--write-auto-subs`, um nur Untertitel zu speichern:
 
 ```sh
 yt-dlp --skip-download --write-subs --write-auto-subs --sub-langs 'de.*,en.*' --sub-format vtt 'https://www.youtube.com/watch?v=VIDEO_ID'

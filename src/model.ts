@@ -7,6 +7,7 @@ export interface Notebook {
   createdAt: string;
   archived?: boolean;
   conflictOf?: string;
+  deletedAt?: string;
 }
 
 export interface Source {
@@ -49,6 +50,28 @@ export function emptyLibrary(): Library {
 
 export function createNotebook(title: string): Notebook {
   return { id: crypto.randomUUID(), title: title.trim(), createdAt: new Date().toISOString() };
+}
+
+export function trashNotebook(library: Library, id: string, deletedAt = new Date().toISOString()): Library {
+  if (id === INBOX_ID || !library.notebooks.some(item => item.id === id && !item.deletedAt)) return library;
+  return { ...library, notebooks: library.notebooks.map(item => item.id === id ? { ...item, deletedAt } : item) };
+}
+
+export function restoreNotebook(library: Library, id: string): Library {
+  if (id === INBOX_ID || !library.notebooks.some(item => item.id === id && item.deletedAt)) return library;
+  return { ...library, notebooks: library.notebooks.map(item => item.id === id ? { ...item, deletedAt: undefined, archived: false } : item) };
+}
+
+export function reorderNotebook(library: Library, fromId: string, beforeId: string): Library {
+  if (fromId === INBOX_ID || beforeId === INBOX_ID || fromId === beforeId) return library;
+  const visible = library.notebooks.filter(item => item.id !== INBOX_ID && !item.deletedAt && !item.archived);
+  const from = visible.findIndex(item => item.id === fromId);
+  const to = visible.findIndex(item => item.id === beforeId);
+  if (from < 0 || to < 0) return library;
+  const [moving] = visible.splice(from, 1);
+  visible.splice(to, 0, moving);
+  let index = 0;
+  return { ...library, notebooks: library.notebooks.map(item => item.id !== INBOX_ID && !item.deletedAt && !item.archived ? visible[index++] : item) };
 }
 
 export function createSource(input: Pick<Source, 'notebookId' | 'kind' | 'title' | 'body'> & Partial<Source>): Source {

@@ -1,6 +1,6 @@
 import type { Extracted } from './extract';
 
-function videoId(value: string): string | null {
+export function videoId(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.hostname === 'youtu.be') return url.pathname.slice(1) || null;

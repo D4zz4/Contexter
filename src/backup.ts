@@ -13,7 +13,7 @@ export async function backupLibrary(library: Library): Promise<Blob> {
   for (const notebook of library.notebooks) {
     const path = `notebooks/${notebook.id}`;
     const sources = library.sources.filter(source => source.notebookId === notebook.id);
-    archive.file(`${path}/index.md`, `# ${notebook.title}\n\n${notebook.archived ? '> Archiviertes Notebook\n\n' : ''}${sources.map(source => `- [${source.title.replaceAll(']', '\\]')}](sources/${source.id}.md)${source.deletedAt ? ' · im Papierkorb' : ''}`).join('\n')}\n`);
+    archive.file(`${path}/index.md`, `# ${notebook.title}\n\n${notebook.deletedAt ? '> Notebook im Papierkorb\n\n' : notebook.archived ? '> Archiviertes Notebook\n\n' : ''}${sources.map(source => `- [${source.title.replaceAll(']', '\\]')}](sources/${source.id}.md)${source.deletedAt ? ' · im Papierkorb' : ''}`).join('\n')}\n`);
     for (const source of sources) archive.file(`${path}/sources/${source.id}.md`, sourceMarkdown(source));
   }
   return archive.generateAsync({ type: 'blob', compression: 'DEFLATE' });
@@ -42,7 +42,7 @@ export function parseLibraryBackup(contents: string): Library {
   if (!library || library.schemaVersion !== 1 || !Array.isArray(library.notebooks) || !Array.isArray(library.sources)) {
     throw new Error('Unbekannte Version der Contexter-Sicherung.');
   }
-  if (!library.notebooks.every(notebook => notebook && validId(notebook.id) && typeof notebook.title === 'string' && typeof notebook.createdAt === 'string' && (notebook.conflictOf === undefined || validId(notebook.conflictOf))) ||
+  if (!library.notebooks.every(notebook => notebook && validId(notebook.id) && typeof notebook.title === 'string' && typeof notebook.createdAt === 'string' && (notebook.conflictOf === undefined || validId(notebook.conflictOf)) && (notebook.deletedAt === undefined || typeof notebook.deletedAt === 'string')) ||
       !library.sources.every(validSource)) throw new Error('Die Sicherung enthält unvollständige Daten.');
   const ids = new Set(library.notebooks.map(notebook => notebook.id));
   if (!ids.has('inbox') || library.sources.some(source => !ids.has(source.notebookId))) throw new Error('Die Sicherung enthält Quellen ohne Notebook.');

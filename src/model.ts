@@ -6,6 +6,7 @@ export interface Notebook {
   title: string;
   createdAt: string;
   archived?: boolean;
+  conflictOf?: string;
 }
 
 export interface Source {
@@ -26,6 +27,8 @@ export interface Source {
   editedByUser: boolean;
   language?: string;
   provider?: string;
+  conflictOf?: string;
+  deletedAt?: string;
 }
 
 export interface Library {
@@ -68,6 +71,8 @@ export function createSource(input: Pick<Source, 'notebookId' | 'kind' | 'title'
     editedByUser: input.editedByUser ?? false,
     language: input.language,
     provider: input.provider,
+    conflictOf: input.conflictOf,
+    deletedAt: input.deletedAt,
   };
 }
 
@@ -76,7 +81,7 @@ export function sourceIdentity(source: Pick<Source, 'kind' | 'originalUrl' | 'or
     try {
       const url = new URL(source.originalUrl);
       if (/(^|\.)youtu(be\.com|\.be)$/.test(url.hostname)) {
-        const id = url.hostname === 'youtu.be' ? url.pathname.slice(1) : url.searchParams.get('v');
+        const id = url.hostname === 'youtu.be' ? url.pathname.slice(1) : url.pathname.startsWith('/shorts/') || url.pathname.startsWith('/live/') ? url.pathname.split('/')[2] : url.searchParams.get('v');
         if (id) return `youtube:${id}`;
       }
       url.hash = '';
@@ -92,7 +97,7 @@ export function sourceIdentity(source: Pick<Source, 'kind' | 'originalUrl' | 'or
 
 export function findDuplicate(library: Library, candidate: Source): Source | undefined {
   const identity = sourceIdentity(candidate);
-  return library.sources.find(source => source.notebookId === candidate.notebookId && sourceIdentity(source) === identity);
+  return library.sources.find(source => !source.deletedAt && source.notebookId === candidate.notebookId && sourceIdentity(source) === identity);
 }
 
 export function metrics(body: string) {

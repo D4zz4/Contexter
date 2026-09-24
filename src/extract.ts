@@ -82,6 +82,7 @@ export async function extractFile(file: File): Promise<Extracted> {
     const parsed = Papa.parse<string[]>(await file.text(), { skipEmptyLines: false });
     if (parsed.errors.length) throw new Error(`CSV konnte nicht vollständig gelesen werden: ${parsed.errors[0].message}`);
     const rows = parsed.data;
+    while (rows.length && rows[rows.length - 1].every(cell => cell === '')) rows.pop();
     if (!rows.length) throw new Error('CSV ist leer.');
     const width = Math.max(...rows.map(row => row.length));
     const cell = (value: string | undefined) => (value || '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
@@ -165,14 +166,11 @@ export async function extractUrl(url: string): Promise<Extracted> {
 }
 
 export async function extractActiveTab(): Promise<Extracted & { url: string }> {
-  if (typeof chrome === 'undefined' || !chrome.tabs?.query || !chrome.scripting?.executeScript) {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     throw new Error('Diese Aktion ist in der Browser-Erweiterung verfügbar.');
   }
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tab = tabs[0];
-  if (!tab?.id || !tab.url || !/^https?:/.test(tab.url)) throw new Error('Der aktuelle Tab kann nicht eingelesen werden.');
-  const results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.documentElement.outerHTML });
-  const html = results[0]?.result;
-  if (!html) throw new Error('Der aktuelle Tab enthält keinen lesbaren Inhalt.');
-  return { ...htmlToMarkdown(html, tab.url), url: tab.url };
+  const result = await chrome.runtime.sendMessage({ type: 'contexter:capture-activated-tab' }) as { url?: string; html?: string; error?: string };
+  if (result.error) throw new Error(result.error);
+  if (!result.url || !result.html) throw new Error('Der vorherige Tab enthält keinen lesbaren Inhalt.');
+  return { ...htmlToMarkdown(result.html, result.url), url: result.url };
 }

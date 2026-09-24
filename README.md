@@ -1,41 +1,44 @@
 # Contexter
 
-Contexter sammelt Quellen, extrahiert ihren Text und exportiert ihn mit nachvollziehbarer Herkunft. Die App erzeugt keine Zusammenfassungen und enthält keinen KI-Chat.
+Contexter sammelt Quellen lokal, extrahiert ihren vorhandenen Text und exportiert ihn mit Herkunftsangaben als Markdown, Klartext oder ZIP. Die App enthält keinen KI-Chat und erzeugt keine Zusammenfassungen.
 
-Status: aktive Entwicklung, noch keine Version 1.0. Die Desktop-Oberfläche und die Chromium-Erweiterung können gebaut werden. Eine Android-Projekthülle ist angelegt; Share Target, native Dateispeicherung und Gerätetest stehen noch aus. Die vollständige Roadmap steht unter [docs/README.md](docs/README.md).
+**Stand: 0.9.0-test.1.** Eine persönlich testbare Android-APK und eine Chromium-Erweiterung sind vorhanden. Dies ist noch keine öffentlich freigegebene 1.0: Ein Test auf einem echten Android-Gerät, schwierige Referenzdateien und Live-Tests der optionalen Anbieter mit eigenen API-Schlüsseln stehen aus. Die ursprüngliche Planungsbaseline steht unter [docs/README.md](docs/README.md); [docs/07-implementation-status.md](docs/07-implementation-status.md) hält den aktuellen Stand und spätere Produktentscheidungen fest.
 
-## Aktuell implementiert
+## Was die Testversion kann
 
-- Notebooks und Inbox, lokale Speicherung in IndexedDB
-- Aktuelle Browserseite per Erweiterung, Web-URL, eingefügter Text und mehrere URLs
-- Dateieingang für TXT, Markdown, HTML, PDF mit Textschicht, DOCX, EPUB ohne DRM und CSV
-- Quellenansicht, manuelle Textbearbeitung, Aktivierung für den Export, einfache Duplikaterkennung
-- Export als einzelne Markdown- oder Textdatei, OKF-orientiertes ZIP und Zwischenablage
+- Inbox und Notebooks erstellen, umbenennen, archivieren und wiederherstellen; Quellen suchen, bearbeiten, verschieben, deaktivieren und in den Papierkorb legen.
+- Text und mehrere URLs importieren; TXT, Markdown, HTML, PDF mit Textschicht, DOCX, EPUB ohne DRM und CSV lokal verarbeiten. Nicht auslesbare oder gescannte PDF-Seiten brauchen später OCR.
+- Auf Android Text, Links und unterstützte Dateien aus anderen Apps über das Teilen-Menü empfangen. Eingänge werden vor der Verarbeitung app-intern zwischengespeichert und nach erfolgreichem Speichern quittiert.
+- In der Chromium-Erweiterung die Webseite übernehmen, von der aus das Erweiterungssymbol geöffnet wurde. Für beliebige URLs wird die jeweilige Website-Berechtigung angefragt.
+- Optional nach eigener Eingabe eines API-Schlüssels: native YouTube-Untertitel über Supadata, Kanal-/Playlist-Video-IDs, und Websuche über Brave Search. Diese Dienste können Kosten verursachen; ohne Schlüssel wird nichts an sie gesendet. Schlüssel werden nicht in Bibliothek oder Sicherung gespeichert.
+- Aktive Quellen als eine `.md`, `.txt` oder ZIP mit Markdown-Einzeldateien ausgeben oder Markdown in die Zwischenablage kopieren. Auf Android öffnet sich für Dateien das Teilen-Menü: dort kannst du z. B. „Dateien“, E-Mail, Telegram oder eine Cloud-App wählen.
+- Die gesamte lokale Bibliothek als Sicherungs-ZIP ausgeben und auf einem anderen Gerät **manuell** zusammenführen oder ersetzen. Abweichende Fassungen bleiben beim Zusammenführen als Konfliktkopien erhalten. Es gibt keinen automatischen Cloud-Abgleich.
 
-Die Dateiformat-Unterstützung ist noch nicht vollständig mit Referenzdokumenten validiert. Die Oberfläche und das Datenmodell werden schrittweise auf die geplante portable Dateistruktur umgestellt. Derzeit liegt der Arbeitsstand geräteintern im Browser-/WebView-Speicher; regelmäßige Exporte sind bis zur Backup-Funktion ratsam.
+## Testen
 
-## Lokal starten
+Die [Testanleitung](docs/08-test-guide.md) enthält Installation, einen kurzen Durchlauf und die bekannten Grenzen. Vor einer Deinstallation bitte eine Sicherungs-ZIP erstellen und außerhalb der App speichern: Bibliothek und Eingangsqueue liegen im lokalen App-/Browserprofil.
 
-Node 22+ und npm werden benötigt.
+## Lokal entwickeln
+
+Node.js 22+ und npm:
 
 ```sh
 npm ci
+npm test
+npm run build
 npm run dev
 ```
 
-Weboberfläche unter `http://127.0.0.1:5173/`. Für die Erweiterung:
+Die Weboberfläche läuft unter `http://127.0.0.1:5173/`. Für Chrome unter `chrome://extensions` den Entwicklermodus aktivieren und `.output/chrome-mv3` als entpackte Erweiterung laden. Für Android werden zusätzlich Android Studio, das Android SDK und JDK 21 benötigt:
 
 ```sh
-npm run build:extension
+npx cap sync android
+cd android
+./gradlew assembleDebug
 ```
 
-In Chrome `chrome://extensions` öffnen, Entwicklermodus einschalten und `.output/chrome-mv3` als entpackte Erweiterung laden. Das Erweiterungssymbol öffnet das Dashboard.
+Die Debug-APK liegt dann unter `android/app/build/outputs/apk/debug/app-debug.apk`. Sie ist nur zum lokalen Testen gedacht, nicht als signierte Store-Version. Beim Wechsel zu einer anderen Signatur kann Android eine Neuinstallation verlangen; vorher sichern.
 
-Für den Android-Build sind Android Studio und SDK nötig; die native Integration wird noch umgesetzt.
+## Datenschutz und Grenzen
 
-## Prüfen
-
-```sh
-npm test
-npm run build
-```
+Bibliotheken liegen pro Plattform lokal in IndexedDB; es gibt weder Benutzerkonten noch einen Server von Contexter. Android nutzt zusätzlich app-internen Speicher für noch nicht bestätigte Teileingänge. Ein Export oder eine bewusst gestartete Anbieterabfrage verlässt das Gerät nur durch deine Aktion. Webseiten können beim normalen URL-Abruf ihre eigenen Zugriffsprotokolle führen. Der Sicherungs- und Exportweg ist zugleich der portable Dateipfad; die ursprüngliche Idee, jede Quelle als direkt editierbare Datei im Geräteordner zu führen, ist in dieser Testversion nicht umgesetzt.

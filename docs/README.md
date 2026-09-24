@@ -1,5 +1,7 @@
 # Context Builder — Vorbereitung zur Entwicklung
 
+> Historische Planungsbaseline. Der aktuelle Implementierungsstand, die Änderung zum manuellen Datei-Abgleich und offene Testnachweise stehen in [07-implementation-status.md](07-implementation-status.md). Die praktische Testanleitung steht in [08-test-guide.md](08-test-guide.md).
+
 Stand: 24. September 2026 · Planungsbaseline 1.0 · Sprache: Deutsch
 
 Die Produkt- und Architekturvorbereitung ist als umsetzbare Ausgangsbasis dokumentiert. Es wurde noch kein Anwendungscode erstellt. Die technische Machbarkeit ist anhand offizieller Dokumentation geprüft; geräteabhängige Annahmen erhalten kurze, messbare Prototypprüfungen zu Beginn der Implementierung. Diese Prüfungen sind noch nicht durchgeführt.

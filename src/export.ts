@@ -2,13 +2,14 @@ import JSZip from 'jszip';
 import YAML from 'yaml';
 import { marked } from 'marked';
 import type { Notebook, Source } from './model';
+import { Capacitor } from '@capacitor/core';
 
 function metadata(source: Source) {
   return {
     type: 'Reference',
     title: source.title,
     ...(source.originalUrl ? { resource: source.originalUrl, sources: [{ id: 'original', resource: source.originalUrl, title: source.title }] } : {}),
-    generated: { by: 'contexter/0.1', at: source.extractedAt || source.importedAt },
+    generated: { by: 'contexter/0.9.0-test.1', at: source.extractedAt || source.importedAt },
     cb_schema: 1,
     cb_id: source.id,
     cb_kind: source.kind,
@@ -18,6 +19,7 @@ function metadata(source: Source) {
     ...(source.publishedAt ? { cb_published_date: source.publishedAt } : {}),
     ...(source.language ? { cb_language: source.language } : {}),
     cb_edited_by_user: source.editedByUser,
+    ...(source.conflictOf ? { cb_conflict_of: source.conflictOf } : {}),
     ...(source.warnings.length ? { cb_warnings: source.warnings } : {}),
   };
 }
@@ -143,6 +145,19 @@ export function download(blob: Blob, filename: string): void {
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function deliverFile(blob: Blob, filename: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) { download(blob, filename); return; }
+  const [{ Filesystem, Directory }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')]);
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.readAsDataURL(blob);
+  });
+  const saved = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache });
+  await Share.share({ title: filename, files: [saved.uri], dialogTitle: 'Contexter-Datei speichern oder teilen' });
 }
 
 export function safeFilename(name: string): string {

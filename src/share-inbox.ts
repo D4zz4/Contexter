@@ -9,6 +9,7 @@ interface SharedItem {
 }
 
 interface ShareInboxPlugin {
+  readClipboard(): Promise<{ text: string }>;
   getPending(): Promise<{ items: Array<Pick<SharedItem, 'id' | 'kind' | 'filename'>>; error?: string }>;
   readItem(options: { id: string }): Promise<SharedItem>;
   ackItem(options: { id: string }): Promise<void>;

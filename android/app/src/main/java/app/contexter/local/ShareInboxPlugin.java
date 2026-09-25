@@ -1,6 +1,8 @@
 package app.contexter.local;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -32,6 +34,20 @@ public class ShareInboxPlugin extends Plugin {
     private static final String KEY = "pending";
     private static final int MAX_BYTES = 25 * 1024 * 1024;
     private static WeakReference<ShareInboxPlugin> active = new WeakReference<>(null);
+
+    @PluginMethod
+    public void readClipboard(PluginCall call) {
+        try {
+            ClipboardManager manager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = manager == null ? null : manager.getPrimaryClip();
+            CharSequence value = clip == null || clip.getItemCount() == 0 ? null : clip.getItemAt(0).coerceToText(getContext());
+            JSObject result = new JSObject();
+            result.put("text", value == null ? "" : value.toString().substring(0, Math.min(value.length(), 20_000)));
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Zwischenablage konnte nicht gelesen werden.");
+        }
+    }
 
     @Override
     public void load() {

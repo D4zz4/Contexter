@@ -38,4 +38,10 @@ describe('subtitle import', () => {
     const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello everyone.\n\n00:00:03.000 --> 00:00:05.000\nWelcome to the video.\n\n00:00:05.000 --> 00:00:07.000\nThis is a new sentence.';
     expect(subtitleToText(vtt)).toBe('[00:00:01] Hello everyone.\n[00:00:03] Welcome to the video.\n[00:00:05] This is a new sentence.');
   });
+
+  it('joins rolling captions with four-second gaps and omits timestamps for YouTube', () => {
+    const vtt = 'WEBVTT\n\n00:00:24.000 --> 00:00:28.000\ngetting fat laying eggs and if not\n\n00:00:28.100 --> 00:00:31.000\ngetting fat laying eggs and if not taking care of those eggs turn into\n\n00:00:35.000 --> 00:00:38.000\nfruit fly lives about 50 days lays eggs\n\n00:00:38.100 --> 00:00:41.000\nfruit fly lives about 50 days lays eggs every single day';
+    expect(subtitleToText(vtt, false)).toBe('getting fat laying eggs and if not taking care of those eggs turn into fruit fly lives about 50 days lays eggs every single day');
+    expect(cleanTimestampedText('[00:00:24] getting fat laying eggs and if not\n[00:00:28] getting fat laying eggs and if not taking care of those eggs turn into', true)).toBe('getting fat laying eggs and if not taking care of those eggs turn into');
+  });
 });

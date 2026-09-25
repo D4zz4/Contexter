@@ -8,6 +8,7 @@ import { backupLibrary, mergeLibraries, readLibraryBackup } from './backup';
 import { braveSearch, isYouTubeVideoUrl, parseYouTubeLinks, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
 import { youtubeTranscriptLocal } from './ytdlp';
 import { cleanTimestampedText } from './subtitles';
+import { prepareYouTubeCookies } from './youtube-cookies';
 import './styles.css';
 
 type Dialog = 'add' | 'export' | 'notebook' | 'notebookActions' | 'trash' | 'manage' | 'shares' | null;
@@ -47,7 +48,8 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'title'>('newest');
   const [supadataKey, setSupadataKey] = useState('');
-  const [subtitleLanguage, setSubtitleLanguage] = useState<'de' | 'en'>('de');
+  const [subtitleLanguage, setSubtitleLanguage] = useState<'original' | 'de' | 'en'>('original');
+  const [youtubeCookies, setYoutubeCookies] = useState('');
   const [braveKey, setBraveKey] = useState('');
   const [discoveryQuery, setDiscoveryQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -106,6 +108,28 @@ export default function App() {
     if (options.open !== false) setSelectedSource(source.id);
     if (!options.silent) setNotice('Quelle hinzugefügt.');
     return true;
+  }
+
+  async function openAddDialog() {
+    setDialog('add');
+    if (!isNative) return;
+    try {
+      const { text } = await shareInbox().readClipboard();
+      const { urls } = parseYouTubeLinks(text);
+      if (urls.length && window.confirm(`${urls.length} YouTube-Link(s) in der Zwischenablage gefunden. Als YouTube-Quelle übernehmen?`)) {
+        setAddTab('youtube');
+        setUrlInput(current => [current.trim(), ...urls].filter(Boolean).join('\n'));
+      }
+    } catch { /* The add dialog remains usable without clipboard access. */ }
+  }
+
+  async function handleCookieFile(file?: File) {
+    if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw new Error('Cookie-Datei ist größer als 1 MiB. Bitte nur YouTube-Cookies exportieren.');
+      setYoutubeCookies(prepareYouTubeCookies(await file.text()));
+      setNotice('YouTube-Cookies nur für diese App-Sitzung geladen. Sie werden nicht gesichert.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
   }
 
   const notebook = library.notebooks.find(item => item.id === selectedNotebook) || library.notebooks[0];
@@ -221,8 +245,8 @@ export default function App() {
     for (const [index, url] of pending.entries()) {
       setYoutubeBatchProgress(`Video ${index + 1} von ${pending.length} wird geladen …`);
       try {
-        const result = method === 'local' ? await youtubeTranscriptLocal(url, subtitleLanguage) : await youtubeTranscript(url, supadataKey);
-        const added = await addSource(createSource({ notebookId, kind: 'youtube', title: result.title, body: result.body, originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }), { open: false, silent: true });
+        const result = method === 'local' ? await youtubeTranscriptLocal(url, subtitleLanguage, youtubeCookies || undefined) : await youtubeTranscript(url, supadataKey);
+        const added = await addSource(createSource({ notebookId, kind: 'youtube', title: result.title, body: cleanTimestampedText(result.body, true), originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }), { open: false, silent: true });
         if (added) imported++; else skipped++;
       } catch (error) { errors.push({ url, message: error instanceof Error ? error.message : String(error) }); }
     }
@@ -258,7 +282,7 @@ export default function App() {
       if (findDuplicate(libraryRef.current, createSource({ notebookId: notebook.id, kind: 'youtube', title: id, body: '', originalUrl: url }))) { skipped++; setSelectedCatalogIds(current => current.filter(item => item !== id)); continue; }
       try {
         const result = await youtubeTranscript(url, supadataKey);
-        if (await addSource(createSource({ notebookId: notebook.id, kind: 'youtube', title: result.title, body: result.body, originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }))) imported++;
+        if (await addSource(createSource({ notebookId: notebook.id, kind: 'youtube', title: result.title, body: cleanTimestampedText(result.body, true), originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }))) imported++;
         setSelectedCatalogIds(current => current.filter(item => item !== id));
       } catch (error) { errors.push(`${id}: ${String(error)}`); }
     }
@@ -468,14 +492,14 @@ export default function App() {
     if (!item.originalUrl) return;
     setBusy(true);
     try {
-      const extracted = item.kind === 'youtube' ? isNative && item.provider !== 'supadata-native' ? await youtubeTranscriptLocal(item.originalUrl, item.language === 'en' ? 'en' : 'de') : await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
+      const extracted = item.kind === 'youtube' ? isNative && item.provider !== 'supadata-native' ? await youtubeTranscriptLocal(item.originalUrl, item.language === 'en' ? 'en' : item.language === 'de' ? 'de' : 'original', youtubeCookies || undefined) : await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
       if (item.editedByUser) {
-        const copy = createSource({ notebookId: item.notebookId, kind: extracted.kind, title: `${extracted.title} (Neu extrahiert)`, body: extracted.body, originalUrl: item.originalUrl, author: extracted.author, conflictOf: item.id, warnings: [...extracted.warnings, 'Manuell bearbeitete Fassung wurde nicht überschrieben.'], status: 'partial' });
+        const copy = createSource({ notebookId: item.notebookId, kind: extracted.kind, title: `${extracted.title} (Neu extrahiert)`, body: item.kind === 'youtube' ? cleanTimestampedText(extracted.body, true) : extracted.body, originalUrl: item.originalUrl, author: extracted.author, conflictOf: item.id, warnings: [...extracted.warnings, 'Manuell bearbeitete Fassung wurde nicht überschrieben.'], status: 'partial' });
         await commit(value => ({ ...value, sources: [...value.sources, copy] }));
         setSelectedSource(copy.id);
         setNotice('Neue Fassung erstellt; manuelle Bearbeitung blieb erhalten.');
       } else {
-        await commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, title: extracted.title, body: extracted.body, author: extracted.author, extractedAt: new Date().toISOString(), warnings: extracted.warnings, status: extracted.warnings.length ? 'partial' : 'ready' } : current) }));
+        await commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, title: extracted.title, body: item.kind === 'youtube' ? cleanTimestampedText(extracted.body, true) : extracted.body, author: extracted.author, extractedAt: new Date().toISOString(), warnings: extracted.warnings, status: extracted.warnings.length ? 'partial' : 'ready' } : current) }));
         setNotice('Quelle erneut verarbeitet.');
       }
     } catch (error) { setNotice(`Erneut verarbeiten fehlgeschlagen: ${String(error)}`); }
@@ -483,12 +507,12 @@ export default function App() {
   }
 
   async function cleanSource(item: Source) {
-    const cleaned = cleanTimestampedText(item.body);
+    const cleaned = cleanTimestampedText(item.body, true);
     if (cleaned === item.body) return;
-    if (!window.confirm('Überlappende Untertitel-Zeilen in dieser Quelle bereinigen? Der bisherige Text wird ersetzt. Wenn du ihn behalten möchtest, erstelle vorher eine Sicherung.')) return;
+    if (!window.confirm('Wiederholte Untertitel-Zeilen und Zeitstempel in dieser Quelle entfernen? Der bisherige Text wird ersetzt. Wenn du ihn behalten möchtest, erstelle vorher eine Sicherung.')) return;
     try {
       await commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, body: cleaned } : current) }));
-      setNotice('Überlappende Untertitel-Zeilen bereinigt.');
+      setNotice('Untertitel-Text ohne wiederholte Zeilen und Zeitstempel gespeichert.');
     } catch (error) { setNotice(`Bereinigung fehlgeschlagen: ${String(error)}`); }
   }
 
@@ -533,10 +557,10 @@ export default function App() {
     <main className="main">
       <header className="topbar"><div className="breadcrumbs">LIBRARY <span>/</span> <strong>{notebook?.title}</strong></div><div className="top-actions"><span className="local-badge">● &nbsp;Auf diesem Gerät</span><button className="button subtle" onClick={() => setDialog('export')}>↗ &nbsp; Exportieren</button></div></header>
       <div className="workspace">
-        <div className="page-heading"><div><div className="eyebrow">DEINE SAMMLUNG</div><h1>{notebook?.title}</h1><p>{notebook?.id === INBOX_ID ? 'Eingangskorb für geteilte Links, Texte und Dateien. Öffne eine Quelle und verschiebe sie bei Bedarf in ein Notebook.' : 'Quellen sammeln, prüfen und als portablen Kontext mitnehmen.'}</p></div><button className="button primary" onClick={() => setDialog('add')}>＋ &nbsp; Quelle hinzufügen</button></div>
+        <div className="page-heading"><div><div className="eyebrow">DEINE SAMMLUNG</div><h1>{notebook?.title}</h1><p>{notebook?.id === INBOX_ID ? 'Eingangskorb für geteilte Links, Texte und Dateien. Öffne eine Quelle und verschiebe sie bei Bedarf in ein Notebook.' : 'Quellen sammeln, prüfen und als portablen Kontext mitnehmen.'}</p></div><button className="button primary" onClick={() => void openAddDialog()}>＋ &nbsp; Quelle hinzufügen</button></div>
         <div className="stat-grid"><div className="stat"><span>QUELLEN</span><strong>{allSources.length}</strong><small>{activeSources.length} aktiv für den Export</small></div><div className="stat"><span>GESCHÄTZTE TOKENS</span><strong>{new Intl.NumberFormat('de-DE').format(tokenCount)}</strong><small>Grobe Schätzung · ≈ 4 Zeichen/Token</small></div><div className="stat accent"><span>DEIN KONTEXT</span><strong>Bereit zum Export</strong><small>Markdown · Text · ZIP · Zwischenablage</small></div></div>
-        <div className="content-card"><div className="list-head"><div><h2>Quellen <span className="heading-count">{allSources.length}</span></h2><p>Jede Quelle bleibt mit ihrem Ursprung verbunden.</p></div><div className="list-actions"><input className="search" type="search" placeholder="Quellen suchen …" value={query} onChange={event => setQuery(event.target.value)} aria-label="Quellen suchen" /><select className="sort-select" aria-label="Quellen sortieren" value={sort} onChange={event => setSort(event.target.value as typeof sort)}><option value="newest">Neueste</option><option value="oldest">Älteste</option><option value="title">Titel A–Z</option></select><button className="button subtle" onClick={() => setDialog('add')}>+ Hinzufügen</button></div></div>
-          {!loaded ? <div className="empty">Bibliothek wird geladen …</div> : visibleSources.length === 0 ? <div className="empty"><div className="empty-symbol">▣</div><h3>{query ? 'Keine passende Quelle' : 'Hier beginnt dein Kontext'}</h3><p>{query ? 'Versuche einen anderen Suchbegriff.' : 'Füge eine Webseite, eine Datei oder eigenen Text hinzu.'}</p>{!query && <button className="button primary" onClick={() => setDialog('add')}>Erste Quelle hinzufügen</button>}</div> : <div className="source-list">{visibleSources.map(item => <div key={item.id} className={`source-row ${selectedSource === item.id ? 'selected' : ''}`}><label className="checkbox-wrap" title="Für Export aktiv"><input type="checkbox" checked={item.enabled} onChange={() => void commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, enabled: !current.enabled } : current) }))} aria-label={`${item.title} für Export aktiv`} /></label><button className="source-open" onClick={() => { setSelectedSource(item.id); setEditing(false); }}><span className={`type-icon type-${item.kind}`}>{item.kind === 'web' ? '◈' : item.kind === 'youtube' ? '▶' : '▤'}</span><span className="source-meta"><strong>{item.title}</strong><small>{originLabel(item.originalUrl) || item.originalFilename || 'Eingefügter Text'} · {localeDate(item.importedAt)}</small></span></button><span className={`status ${item.status}`}>{item.status === 'partial' ? 'Hinweis' : item.status === 'failed' ? 'Fehler' : item.status === 'queued' ? 'Wartet' : 'Bereit'}</span><span className="row-tokens">~{new Intl.NumberFormat('de-DE').format(metrics(item.body).tokens)} Token</span></div>)}</div>}
+        <div className="content-card"><div className="list-head"><div><h2>Quellen <span className="heading-count">{allSources.length}</span></h2><p>Jede Quelle bleibt mit ihrem Ursprung verbunden.</p></div><div className="list-actions"><input className="search" type="search" placeholder="Quellen suchen …" value={query} onChange={event => setQuery(event.target.value)} aria-label="Quellen suchen" /><select className="sort-select" aria-label="Quellen sortieren" value={sort} onChange={event => setSort(event.target.value as typeof sort)}><option value="newest">Neueste</option><option value="oldest">Älteste</option><option value="title">Titel A–Z</option></select><button className="button subtle" onClick={() => void openAddDialog()}>+ Hinzufügen</button></div></div>
+          {!loaded ? <div className="empty">Bibliothek wird geladen …</div> : visibleSources.length === 0 ? <div className="empty"><div className="empty-symbol">▣</div><h3>{query ? 'Keine passende Quelle' : 'Hier beginnt dein Kontext'}</h3><p>{query ? 'Versuche einen anderen Suchbegriff.' : 'Füge eine Webseite, eine Datei oder eigenen Text hinzu.'}</p>{!query && <button className="button primary" onClick={() => void openAddDialog()}>Erste Quelle hinzufügen</button>}</div> : <div className="source-list">{visibleSources.map(item => <div key={item.id} className={`source-row ${selectedSource === item.id ? 'selected' : ''}`}><label className="checkbox-wrap" title="Für Export aktiv"><input type="checkbox" checked={item.enabled} onChange={() => void commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, enabled: !current.enabled } : current) }))} aria-label={`${item.title} für Export aktiv`} /></label><button className="source-open" onClick={() => { setSelectedSource(item.id); setEditing(false); }}><span className={`type-icon type-${item.kind}`}>{item.kind === 'web' ? '◈' : item.kind === 'youtube' ? '▶' : '▤'}</span><span className="source-meta"><strong>{item.title}</strong><small>{originLabel(item.originalUrl) || item.originalFilename || 'Eingefügter Text'} · {localeDate(item.importedAt)}</small></span></button><span className={`status ${item.status}`}>{item.status === 'partial' ? 'Hinweis' : item.status === 'failed' ? 'Fehler' : item.status === 'queued' ? 'Wartet' : 'Bereit'}</span><span className="row-tokens">~{new Intl.NumberFormat('de-DE').format(metrics(item.body).tokens)} Token</span></div>)}</div>}
         </div>
       </div>
     </main>
@@ -544,7 +568,7 @@ export default function App() {
     {source && <div className="detail-backdrop" onClick={() => setSelectedSource(null)}><section className="detail-panel" onClick={event => event.stopPropagation()} aria-label="Quelle ansehen">
       <div className="detail-top"><span>QUELLENDETAIL</span><button className="icon-button" onClick={() => setSelectedSource(null)} aria-label="Schließen">×</button></div>
       <div className="detail-scroll"><div className="detail-kicker">{source.kind.toUpperCase()} · {localeDate(source.importedAt)}</div><h2>{source.title}</h2>{source.originalUrl && <a className="original-link" href={source.originalUrl} target="_blank" rel="noreferrer">Original öffnen ↗</a>}{source.warnings.map((warning, index) => <div className="warning" key={index}>⚠ {warning}</div>)}<div className="detail-metrics">{metrics(source.body).words} Wörter <span>·</span> ~{metrics(source.body).tokens} Token <span>·</span> {source.editedByUser ? 'Manuell bearbeitet' : 'Extrahiert'}</div>{editing ? <textarea className="editor" value={draft} onChange={event => setDraft(event.target.value)} aria-label="Quelleninhalt bearbeiten" /> : <pre className="body-preview">{source.body}</pre>}</div>
-      <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived && !item.deletedAt).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}{source.kind === 'youtube' && !source.editedByUser && cleanTimestampedText(source.body) !== source.body && <button className="button subtle" disabled={busy} onClick={() => void cleanSource(source)}>Dopplungen bereinigen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
+      <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived && !item.deletedAt).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}{source.kind === 'youtube' && !source.editedByUser && cleanTimestampedText(source.body, true) !== source.body && <button className="button subtle" disabled={busy} onClick={() => void cleanSource(source)}>Text bereinigen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
     </section></div>}
 
     {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen'}</h2></div><button className="icon-button" disabled={busy} onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
@@ -568,8 +592,8 @@ export default function App() {
           <label>VIDEO-URLS (EINE PRO ZEILE)<textarea rows={5} placeholder={'https://www.youtube.com/watch?v=…\nhttps://youtu.be/…'} value={urlInput} disabled={busy} onChange={event => { setUrlInput(event.target.value); setYoutubeBatchErrors([]); }} /></label>
           <p className="helper">Du kannst mehrere Video-Links einfügen. Sie werden nacheinander geladen; doppelte und bereits vorhandene Videos werden übersprungen. Maximal 100 unterschiedliche Videos pro Durchlauf.</p>
           {youtubeBatchProgress && <p className="helper" role="status">{youtubeBatchProgress}</p>}
-          {youtubeBatchErrors.length > 0 && <div className="warning" role="alert"><strong>{youtubeBatchErrors.length} Link(s) nicht geladen; sie bleiben oben für einen erneuten Versuch:</strong>{youtubeBatchErrors.slice(0, 10).map((item, index) => <div key={`${item.url}-${index}`}>{item.url}: {item.message}</div>)}{youtubeBatchErrors.length > 10 && <div>… und {youtubeBatchErrors.length - 10} weitere.</div>}</div>}
-          {isNative && <><p className="helper">Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Es wird nur eine vorhandene Untertitelsprache geladen, kein Video und keine KI-Transkription. YouTube kann Abrufe blockieren oder begrenzen.</p><label>UNTERTITELSPRACHE<select value={subtitleLanguage} disabled={busy} onChange={event => setSubtitleLanguage(event.target.value as 'de' | 'en')}><option value="de">Deutsch</option><option value="en">Englisch</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube('local')}>{busy ? 'Lade Untertitel …' : 'Untertitel ohne API-Schlüssel laden'}</button></>}
+          {youtubeBatchErrors.length > 0 && <div className="warning" role="alert"><strong>{youtubeBatchErrors.length} Link(s) nicht geladen; sie bleiben oben für einen erneuten Versuch:</strong>{youtubeBatchErrors.slice(0, 10).map((item, index) => <div key={`${item.url}-${index}`}>{item.url}: {item.message}{isYouTubeVideoUrl(item.url) && <div><a href={item.url} target="_blank" rel="noreferrer">Video im Browser öffnen ↗</a></div>}</div>)}{youtubeBatchErrors.length > 10 && <div>… und {youtubeBatchErrors.length - 10} weitere.</div>}</div>}
+          {isNative && <><p className="helper">Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Neue YouTube-Transkripte enthalten keine Zeitstempel. YouTube kann Abrufe je nach Netzwerk oder VPN blockieren; ein Browserbesuch kann helfen, seine Anmeldung wird aber nicht automatisch an Contexter übertragen.</p><label>UNTERTITELSPRACHE<select value={subtitleLanguage} disabled={busy} onChange={event => setSubtitleLanguage(event.target.value as 'original' | 'de' | 'en')}><option value="original">Originalsprache (falls erkennbar)</option><option value="de">Deutsch</option><option value="en">Englisch</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube('local')}>{busy ? 'Lade Untertitel …' : 'Untertitel ohne API-Schlüssel laden'}</button><div className="backup-section"><h3>Optional: YouTube-Cookies</h3><p>Wenn YouTube den Abruf als Bot blockiert, kannst du eine selbst exportierte Netscape-Cookie-Datei auswählen. Contexter übernimmt daraus nur YouTube-Einträge. Cookies sind sensible Anmeldedaten: Die Auswahl bleibt nur für diese App-Sitzung im Speicher und wird nicht gesichert. Während des Abrufs liegt eine temporäre Datei im privaten App-Cache; sie wird danach oder spätestens beim nächsten App-Start gelöscht. Ein Erfolg ist nicht garantiert; die App kann Cookies aus anderen Android-Browsern nicht direkt lesen und bietet keine eingebettete Google-Anmeldung.</p><input type="file" accept=".txt,text/plain" disabled={busy} aria-label="YouTube-Cookie-Datei auswählen" onChange={event => { void handleCookieFile(event.target.files?.[0]); event.target.value = ''; }} />{youtubeCookies && <div className="modal-actions"><span className="helper">YouTube-Cookies für diese Sitzung geladen.</span><button className="button subtle" disabled={busy} onClick={() => { setYoutubeCookies(''); setNotice('YouTube-Cookies aus der App-Sitzung entfernt.'); }}>Cookies vergessen</button></div>}</div></>}
           {!isNative && <p className="helper">Im Browser kannst du Untertiteldateien (VTT/SRT) ohne Schlüssel im Tab „Datei“ importieren. Der direkte yt-dlp-Abruf ist nur in der Android-App möglich.</p>}
           <div className="backup-section"><h3>Optional: Supadata</h3><p>Nur wenn du den folgenden Schlüssel eingibst und „Über Supadata laden“ wählst, wird der Link an diesen externen Dienst übertragen. Abrufe können Kosten verursachen. Der Schlüssel bleibt nur im Arbeitsspeicher.</p>
           <label>SUPADATA API-SCHLÜSSEL<input type="password" autoComplete="off" value={supadataKey} onChange={event => setSupadataKey(event.target.value)} /></label>

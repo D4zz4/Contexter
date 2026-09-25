@@ -37,34 +37,54 @@ function overlap(previous: string[], current: string[]): number {
   const left = previous.map(comparable);
   const right = current.map(comparable);
   for (let size = Math.min(left.length, right.length); size > 0; size--) {
-    if (size < 3 && size !== right.length && !(size === 1 && left.length === 1)) continue;
     if (left.slice(-size).every((item, index) => item && item === right[index])) return size;
   }
   return 0;
 }
 
-function cleanCues(cues: Cue[]): string {
+function sharedWords(previous: string[], current: string[], elapsed: number): number {
+  if (elapsed < 0 || elapsed > 8_000) return 0;
+  const size = overlap(previous, current);
+  if (size >= 3) return size;
+  if (size === current.length && elapsed <= 3_000) return size;
+  if (size === 2 && elapsed <= 3_000) return size;
+  if (size === 1 && elapsed <= 1_000) return size;
+  return 0;
+}
+
+function cleanCues(cues: Cue[], timestamps = true): string {
   const lines: Array<{ time: string; text: string }> = [];
-  let previous: string[] = [];
+  const emitted: string[] = [];
   let previousTime = -Infinity;
   for (const cue of cues) {
     const time = milliseconds(cue.start);
     const current = words(cue.text);
-    const shared = time - previousTime <= 3_000 ? overlap(previous, current) : 0;
-    const fresh = current.slice(shared).join(' ');
-    if (fresh) {
+    const shared = sharedWords(emitted.slice(-80), current, time - previousTime);
+    const fresh = current.slice(shared);
+    if (fresh.length) {
       const stamp = clock(cue.start);
       const last = lines.at(-1);
-      if (last?.time === stamp) last.text += ` ${fresh}`;
-      else lines.push({ time: stamp, text: fresh });
+      if (last?.time === stamp) last.text += ` ${fresh.join(' ')}`;
+      else lines.push({ time: stamp, text: fresh.join(' ') });
+      emitted.push(...fresh);
     }
-    previous = current;
     previousTime = time;
   }
-  return lines.map(line => `[${line.time}] ${line.text}`).join('\n');
+  if (timestamps) return lines.map(line => `[${line.time}] ${line.text}`).join('\n');
+  const paragraphs: string[] = [];
+  let paragraph = '';
+  for (const line of lines) {
+    paragraph += `${paragraph ? ' ' : ''}${line.text}`;
+    if (/[.!?][”"']?$/u.test(line.text) || words(paragraph).length >= 60) {
+      paragraphs.push(paragraph);
+      paragraph = '';
+    }
+  }
+  if (paragraph) paragraphs.push(paragraph);
+  return paragraphs.join('\n\n');
 }
 
-export function cleanTimestampedText(body: string): string {
+export function cleanTimestampedText(body: string, removeTimestamps = false): string {
   const lines = body.split(/\r?\n/u).filter(line => line.trim());
   const cues: Cue[] = [];
   for (const line of lines) {
@@ -72,11 +92,11 @@ export function cleanTimestampedText(body: string): string {
     if (!match) return body;
     cues.push({ start: match[1], text: match[2] });
   }
-  const hasOverlap = cues.some((cue, index) => index > 0 && milliseconds(cue.start) - milliseconds(cues[index - 1].start) <= 3_000 && overlap(words(cues[index - 1].text), words(cue.text)) > 0);
-  return hasOverlap ? cleanCues(cues) : body;
+  const hasOverlap = cues.some((cue, index) => index > 0 && sharedWords(words(cues[index - 1].text), words(cue.text), milliseconds(cue.start) - milliseconds(cues[index - 1].start)) > 0);
+  return hasOverlap || removeTimestamps ? cleanCues(cues, !removeTimestamps) : body;
 }
 
-export function subtitleToText(contents: string): string {
+export function subtitleToText(contents: string, timestamps = true): string {
   const blocks = contents.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split(/\n\s*\n/);
   const cues: Cue[] = [];
   const time = /^((?:\d{2}:)?\d{2}:\d{2}[.,]\d{3})\s+-->\s+(?:\d{2}:)?\d{2}:\d{2}[.,]\d{3}(?:\s|$)/;
@@ -90,5 +110,5 @@ export function subtitleToText(contents: string): string {
     if (text) cues.push({ start, text });
   }
   if (!cues.length) throw new Error('Die Untertiteldatei enthält keine lesbaren Zeitstempel und Textzeilen.');
-  return cleanCues(cues);
+  return cleanCues(cues, timestamps);
 }

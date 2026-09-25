@@ -2,7 +2,7 @@
 
 ## Android
 
-Die bereitgestellte `contexter-android-0.9.0-test.4.apk` auf das Android-Gerät übertragen, öffnen und die Installation aus dieser Quelle für diesen Vorgang erlauben. Alternativ bei aktiviertem USB-Debugging: `adb install -r contexter-android-0.9.0-test.4.apk`. Die APK ist eine Debug-Version und nicht für den Store signiert. Vor einem späteren Signaturwechsel unbedingt die Sicherung außerhalb der App speichern.
+Die bereitgestellte `contexter-android-0.9.0-test.5.apk` auf das Android-Gerät übertragen, öffnen und die Installation aus dieser Quelle für diesen Vorgang erlauben. Alternativ bei aktiviertem USB-Debugging: `adb install -r contexter-android-0.9.0-test.5.apk`. Die APK ist eine Debug-Version und nicht für den Store signiert. Vor einem späteren Signaturwechsel unbedingt die Sicherung außerhalb der App speichern.
 
 1. Contexter öffnen und ein Notebook anlegen. Eine kurze Textquelle hinzufügen, bearbeiten und einmal deaktivieren.
 2. Aus einer anderen App einen Weblink und eine TXT-/PDF-Datei über das Android-Teilen-Menü an Contexter senden. Die Eingänge sollten in der Inbox erscheinen. Bei nicht auslesbarer Datei erscheint ein erneut versuchbarer Eingang.
@@ -10,8 +10,10 @@ Die bereitgestellte `contexter-android-0.9.0-test.4.apk` auf das Android-Gerät 
 4. Über „Exportieren → Sicherung speichern / teilen“ eine Sicherungs-ZIP außerhalb der App ablegen. Auf dem zweiten Gerät dieselbe APK installieren, die ZIP dorthin übertragen und in Contexter „Exportieren → Zusammenführen“ wählen. Für eine vollständige Wiederherstellung statt Merge „Ersetzen“ verwenden; das überschreibt die dortige Bibliothek nach Bestätigung.
 5. Nach App-Neustart prüfen, ob Notebooks und Texte erhalten geblieben sind. Zum Konflikttest dieselbe Quelle auf beiden Geräten verschieden bearbeiten, eine Sicherung übertragen und zusammenführen; beide Fassungen sollten sichtbar bleiben.
 6. Ein Notebook lange drücken: Das Aktionsfenster sollte „In den Papierkorb“ anbieten. Nach Bestätigung über „Papierkorb“ wiederherstellen. Über das Griffsymbol ⋮⋮ kannst du ein Notebook auf ein anderes ziehen, um es zu sortieren, oder auf den Papierkorb, um es nach Bestätigung zu löschen. Die Quellen bleiben dabei erhalten.
-7. „Quelle hinzufügen → YouTube“ öffnen, zwei Video-URLs untereinander einfügen, Deutsch oder Englisch wählen und „Untertitel ohne API-Schlüssel laden“ wählen. Die App zeigt den Fortschritt; bereits vorhandene Videos werden übersprungen. Schlägt ein Video fehl, bleiben seine URL und der Fehler im Dialog für einen erneuten Versuch. Nur vorhandene Untertitel werden geladen; YouTube kann einzelne Abrufe mit HTTP 403/429 blockieren.
-8. Für eine bereits importierte YouTube-Quelle mit wiederholten Satzanfängen das Quellendetail öffnen und „Dopplungen bereinigen“ wählen. Der Knopf erscheint nur, wenn überlappende Zeilen erkannt wurden und die Quelle nicht manuell bearbeitet ist. Ein Video ohne solche Überlappungen sollte unverändert bleiben.
+7. Einen YouTube-Link kopieren und auf „Quelle hinzufügen“ tippen. Nur bei erkanntem YouTube-Link sollte die App fragen, ob sie ihn in den YouTube-Tab übernehmen soll. Ohne Link öffnet sich der normale Dialog.
+8. Im YouTube-Tab zwei Video-URLs untereinander einfügen. „Originalsprache (falls erkennbar)“ ist vorausgewählt; bei nicht erkennbarer Originalsprache Deutsch oder Englisch manuell wählen. „Untertitel ohne API-Schlüssel laden“ zeigt den Fortschritt; vorhandene Videos werden übersprungen. Neue Transkripte sollen ohne Zeitstempel und ohne rollende Wiederholungen erscheinen.
+9. Für eine ältere YouTube-Quelle mit Zeitstempeln oder wiederholten Satzanfängen im Quellendetail „Text bereinigen“ wählen. Vorher bei Bedarf eine Sicherung erstellen; manuell bearbeitete Quellen werden nicht automatisch überschrieben.
+10. Meldet YouTube „Sign in to confirm you’re not a bot“, zunächst VPN ausschalten oder Netzwerk wechseln und erneut versuchen. Optional kannst du eine selbst exportierte Netscape-Cookie-Datei mit YouTube-Cookies im YouTube-Tab auswählen. Die App filtert andere Domains und hält die Cookies nur für die laufende Sitzung, nicht in der Sicherung. Verwende keine Cookie-Datei aus unsicherer Quelle und teile sie mit niemandem. Der Cookie-Ausweg ist noch nicht mit einem echten Konto live geprüft und garantiert keinen Erfolg.
 
 ## Chromium-Erweiterung
 

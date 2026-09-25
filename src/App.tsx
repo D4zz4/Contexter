@@ -9,7 +9,7 @@ import { braveSearch, isYouTubeVideoUrl, parseYouTubeLinks, youtubeCatalog, yout
 import { youtubeTranscriptLocal } from './ytdlp';
 import { cleanTimestampedText } from './subtitles';
 import { prepareYouTubeCookies } from './youtube-cookies';
-import { loadLanguage, translateUi, type Language } from './i18n';
+import { loadLanguage, loadTheme, translateUi, type Language, type Theme } from './i18n';
 import './styles.css';
 
 type Dialog = 'add' | 'export' | 'notebook' | 'notebookActions' | 'trash' | 'manage' | 'shares' | 'settings' | null;
@@ -26,6 +26,7 @@ function loadCatalogDraft(): { url: string; type: 'video' | 'short' | 'live'; id
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(loadLanguage);
+  const [theme, setTheme] = useState<Theme>(loadTheme);
   const t = (value: string) => translateUi(value, language);
   const message = (de: string, en: string) => language === 'de' ? de : en;
   const [catalogDraft] = useState(loadCatalogDraft);
@@ -92,6 +93,12 @@ export default function App() {
     try { localStorage.setItem('contexter-language', language); }
     catch { /* Language selection remains available for this session. */ }
   }, [language]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('contexter-theme', theme); }
+    catch { /* Theme selection remains available for this session. */ }
+  }, [theme]);
 
   useEffect(() => {
     if (!notice) return;
@@ -693,7 +700,7 @@ export default function App() {
     </section></div>}
 
     {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label={t("Dialog")}><div className="modal-head"><div><div className="eyebrow">{dialog === 'settings' ? 'Contexter' : notebook?.title}</div><h2>{t(dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : dialog === 'settings' ? 'Einstellungen' : 'Notebook erstellen oder importieren')}</h2></div><button className="icon-button" disabled={busy} onClick={() => setDialog(null)} aria-label={t("Schließen")}>×</button></div>
-      {dialog === 'settings' && <div className="modal-body"><label>{t('SPRACHE')}<select value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="de">Deutsch</option><option value="en">English</option></select></label><p className="helper">{t('Die Spracheinstellung wird nur auf diesem Gerät gespeichert. Quelleninhalte werden nicht übersetzt.')}</p><p className="helper">{t('Weitere Einstellungen können später hier ergänzt werden.')}</p></div>}
+      {dialog === 'settings' && <div className="modal-body"><label>{t('SPRACHE')}<select value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="de">Deutsch</option><option value="en">English</option></select></label><p className="helper">{t('Die Spracheinstellung wird nur auf diesem Gerät gespeichert. Quelleninhalte werden nicht übersetzt.')}</p><label>{t('FARBTHEMA')}<select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="light">{t('Hell')}</option><option value="dark">{t('Dunkel')}</option></select></label><p className="helper">{t('Das Design wird nur auf diesem Gerät gespeichert.')}</p><p className="helper">{t('Weitere Einstellungen können später hier ergänzt werden.')}</p></div>}
       {dialog === 'notebookActions' && contextNotebook && <div className="modal-body"><p className="helper">{contextNotebook.title} · {library.sources.filter(item => item.notebookId === contextNotebook.id && !item.deletedAt).length}{t(" Quellen")}</p><div className="notebook-action-list"><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setDialog(null); }}>{t("Öffnen")}</button><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setNotebookName(contextNotebook.title); setDialog('manage'); }}>{t("Umbenennen / archivieren")}</button><button className="button danger" onClick={() => void deleteNotebook(contextNotebook.id)}>{t("In den Papierkorb")}</button></div><p className="helper">{t("Zum Sortieren oder Löschen kannst du das Griffsymbol ⋮⋮ neben dem Notebook ziehen.")}</p></div>}
       {dialog === 'shares' && <div className="modal-body"><p className="helper">{t("Diese Eingänge bleiben erhalten, bis der Import gelingt oder du sie ausdrücklich verwirfst. Spätere Eingänge werden trotzdem weiterverarbeitet.")}</p><div className="trash-list">{shareErrors.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{item.message}</small></span><button className="button danger" onClick={() => void discardSharedItem(item.id)}>{t("Verwerfen")}</button></div>)}</div><button className="button primary wide" onClick={() => setShareRetry(value => value + 1)}>{t("Erneut versuchen")}</button></div>}
       {dialog === 'trash' && <div className="modal-body"><p className="helper">{t("Notebooks und Quellen bleiben lokal erhalten, bis du sie wiederherstellst oder den Papierkorb endgültig leerst. Bereits exportierte Sicherungen ändern sich dadurch nicht.")}</p>{deletedNotebooks.length + deletedSources.length === 0 ? <p className="helper">{t("Der Papierkorb ist leer.")}</p> : <><div className="trash-list">{deletedNotebooks.map(item => <div key={item.id}><span><strong>▤ {item.title}</strong><small>{t("Notebook · ")}{library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length}{t(" Quellen")}</small></span><button className="button subtle" onClick={() => void undeleteNotebook(item.id)}>{t("Wiederherstellen")}</button></div>)}{deletedSources.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{t("Quelle · ")}{library.notebooks.find(book => book.id === item.notebookId)?.title || 'Unbekanntes Notebook'}</small></span><button className="button subtle" onClick={() => void restoreSource(item)}>{t("Wiederherstellen")}</button></div>)}</div><div className="modal-actions"><button className="button danger" onClick={() => void permanentlyEmptyTrash()}>{t("Papierkorb endgültig leeren")}</button></div></>}</div>}

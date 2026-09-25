@@ -1,8 +1,14 @@
 export type Language = 'de' | 'en';
+export type Theme = 'light' | 'dark';
 
 export function loadLanguage(): Language {
   try { return localStorage.getItem('contexter-language') === 'en' ? 'en' : 'de'; }
   catch { return 'de'; }
+}
+
+export function loadTheme(): Theme {
+  try { return localStorage.getItem('contexter-theme') === 'dark' ? 'dark' : 'light'; }
+  catch { return 'light'; }
 }
 
 const english: Record<string, string> = {
@@ -179,6 +185,10 @@ const english: Record<string, string> = {
   'Manuell bearbeitet': 'Edited manually',
   'Extrahiert': 'Extracted',
   'SPRACHE': 'LANGUAGE',
+  'FARBTHEMA': 'APPEARANCE',
+  'Hell': 'Light',
+  'Dunkel': 'Dark',
+  'Das Design wird nur auf diesem Gerät gespeichert.': 'This appearance setting is stored on this device only.',
   'Die Spracheinstellung wird nur auf diesem Gerät gespeichert. Quelleninhalte werden nicht übersetzt.': 'This language setting is stored on this device only. Source contents are not translated.',
   'Weitere Einstellungen können später hier ergänzt werden.': 'More settings can be added here later.',
   'Einstellungen': 'Settings',

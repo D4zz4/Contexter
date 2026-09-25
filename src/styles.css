@@ -8,3 +8,40 @@
 .sort-select{height:37px;border:1px solid #e3eae8;border-radius:7px;background:#fbfdfc;padding:0 8px;font-size:11px;color:#284a48}.trash-list{display:grid;gap:8px}.trash-list>div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid #e1eae6;border-radius:8px}.trash-list span{display:flex;flex-direction:column;gap:3px;min-width:0}.trash-list strong{font-size:12px;color:#24504a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trash-list small{font-size:10px;color:#849d96}@media(max-width:720px){.list-actions{flex-wrap:wrap}.sort-select{flex:1}.list-actions .search{flex:1 1 100%}}
 .notebook-row{display:flex;align-items:center;border-radius:8px;border:1px solid transparent;min-width:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}.notebook-row .nav-item{min-width:0;flex:1;padding-right:4px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}.notebook-grip{border:0;background:transparent;color:#9bc7bf;width:28px;height:36px;flex:none;font-size:13px;letter-spacing:-3px;touch-action:none;cursor:grab}.notebook-grip:active{cursor:grabbing}.notebook-row.drop-hover,.trash-drop.drop-hover{border-color:#87ddbd;background:#215c50}.notebook-row.dragging{opacity:.45}.notebook-drag-ghost{position:fixed;z-index:60;pointer-events:none;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:9px 13px;border-radius:8px;background:#176c64;color:white;box-shadow:0 8px 25px #123d3c55;font-size:12px;font-weight:800}.notebook-action-list{display:grid;gap:8px;margin-bottom:16px}.notebook-action-list .button{text-align:left;white-space:normal}@media(max-width:720px){.sidebar .notebook-nav .notebook-row{flex:none;min-width:155px}.sidebar .notebook-nav .nav-item{width:auto;min-width:0}.notebook-grip{width:31px;height:42px}}
 .settings-button{min-width:38px;padding:8px 10px;font-size:18px;line-height:1}.mobile-settings-button{display:none}.modal-body select{display:block;width:100%;margin-top:8px;border:1px solid #dce8e3;border-radius:7px;padding:12px;background:#fbfdfc;color:#1e3e3e;font-size:12px;letter-spacing:normal}@media(max-width:720px){.sidebar{position:relative}.mobile-settings-button{display:grid;position:absolute;right:14px;top:12px;width:38px;height:38px;padding:7px;z-index:2}.topbar .settings-button{display:none}}
+
+:root[data-theme="dark"]{color-scheme:dark;color:#dce7e3;background:#101918}
+:root[data-theme="dark"] body{background:#101918;color:#dce7e3}
+:root[data-theme="dark"] .main,:root[data-theme="dark"] .workspace{background:#101918}
+:root[data-theme="dark"] .topbar{background:#172321;border-color:#2b3a36}
+:root[data-theme="dark"] .breadcrumbs strong,:root[data-theme="dark"] .page-heading h1,:root[data-theme="dark"] .list-head h2{color:#e2ece8}
+:root[data-theme="dark"] .breadcrumbs,:root[data-theme="dark"] .page-heading p,:root[data-theme="dark"] .list-head p{color:#9aafa8}
+:root[data-theme="dark"] .content-card,:root[data-theme="dark"] .stat,:root[data-theme="dark"] .detail-panel,:root[data-theme="dark"] .modal{background:#182421;border-color:#2c3d38;color:#dce7e3}
+:root[data-theme="dark"] .stat strong,:root[data-theme="dark"] .source-meta strong,:root[data-theme="dark"] .trash-list strong,:root[data-theme="dark"] .backup-section h3,:root[data-theme="dark"] .discovery-result strong{color:#e1ece7}
+:root[data-theme="dark"] .stat span,:root[data-theme="dark"] .stat small,:root[data-theme="dark"] .source-meta small,:root[data-theme="dark"] .row-tokens,:root[data-theme="dark"] .trash-list small,:root[data-theme="dark"] .backup-section p,:root[data-theme="dark"] .discovery-result small,:root[data-theme="dark"] .discovery-result p{color:#a1b4ad}
+:root[data-theme="dark"] .stat.accent{background:#203a34;border-color:#315248}
+:root[data-theme="dark"] .stat.accent strong{color:#91ddc5}
+:root[data-theme="dark"] .list-head,:root[data-theme="dark"] .detail-top,:root[data-theme="dark"] .detail-actions,:root[data-theme="dark"] .detail-metrics,:root[data-theme="dark"] .backup-section{border-color:#2b3b36}
+:root[data-theme="dark"] .source-row{border-color:#293a35}
+:root[data-theme="dark"] .source-row:hover,:root[data-theme="dark"] .source-row.selected{background:#20312c}
+:root[data-theme="dark"] .detail-scroll h2,:root[data-theme="dark"] .modal-head h2,:root[data-theme="dark"] .empty h3{color:#e4eee9}
+:root[data-theme="dark"] .detail-top,:root[data-theme="dark"] .detail-metrics,:root[data-theme="dark"] .helper,:root[data-theme="dark"] .modal-body label{color:#9cb5ac}
+:root[data-theme="dark"] .body-preview{color:#cadad4}
+:root[data-theme="dark"] .modal-head,:root[data-theme="dark"] .tabs,:root[data-theme="dark"] .trash-list>div,:root[data-theme="dark"] .catalog-list,:root[data-theme="dark"] .discovery-result{border-color:#2e403a}
+:root[data-theme="dark"] .modal-body input:not([type=file]),:root[data-theme="dark"] .modal-body textarea,:root[data-theme="dark"] .modal-body select,:root[data-theme="dark"] .sort-select,:root[data-theme="dark"] .search,:root[data-theme="dark"] .move-select{background:#111c19;border-color:#344a42;color:#e1ece7}
+:root[data-theme="dark"] input::placeholder,:root[data-theme="dark"] textarea::placeholder{color:#829990}
+:root[data-theme="dark"] .button.subtle,:root[data-theme="dark"] .export-options button{background:#1d2d29;color:#cfe0d9;border-color:#354a42}
+:root[data-theme="dark"] .button.subtle:hover,:root[data-theme="dark"] .export-options button:hover{background:#263b34}
+:root[data-theme="dark"] .button.danger{background:#302320;color:#f1b5a9;border-color:#65413a}
+:root[data-theme="dark"] .button.danger:hover{background:#402b26}
+:root[data-theme="dark"] .export-options strong{color:#d5e6de}
+:root[data-theme="dark"] .export-options small{color:#9bb0a8}
+:root[data-theme="dark"] .type-icon{background:#243a34;color:#8ed6be}
+:root[data-theme="dark"] .type-youtube{background:#442c2a;color:#efa49a}
+:root[data-theme="dark"] .type-text,:root[data-theme="dark"] .type-markdown,:root[data-theme="dark"] .type-html{background:#2b3046;color:#bec7ff}
+:root[data-theme="dark"] .tabs button{color:#9bb0a8}
+:root[data-theme="dark"] .tabs button.active{color:#83d7bd}
+:root[data-theme="dark"] .original-link{color:#79d2b5}
+:root[data-theme="dark"] .empty{color:#9bb0a8}
+:root[data-theme="dark"] .empty-symbol{background:#203a34;color:#8dd4bb}
+:root[data-theme="dark"] .heading-count{background:#243a34;color:#a7dbc8}
+:root[data-theme="dark"] .editor{background:#111c19;border-color:#344a42;color:#e1ece7}

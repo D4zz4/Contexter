@@ -1,6 +1,6 @@
 # Implementierungsstand und geänderte Entscheidung
 
-Stand: 25. September 2026 · 0.9.0-test.8
+Stand: 25. September 2026 · 0.9.0-test.9
 
 Die Dokumente 01–06 sind die historische Planungsbaseline vor dem Coding. Ihre Aussagen „noch nicht implementiert“ und die dortige automatische Synchronisationsarchitektur beschreiben nicht mehr den aktuellen Stand. Die laufende Implementierung ist im Root-README beschrieben.
 
@@ -14,7 +14,7 @@ Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; I
 
 Der Notebook-ZIP-Export ist ein OKF-orientierter **Quellen-Vault**: `index.md` liegt im ZIP-Root und trägt `okf_version: "0.2"`; Quelldateien liegen unter `sources/` und besitzen YAML-Frontmatter mit `type: Reference`, Titel, Herkunft und Contexter-ID. Ab Test.7 tragen die Dateien lesbare, titelbasierte Namen und sichtbare Markdown-Überschriften, damit Obsidian nicht nur UUIDs anzeigt. Gleichnamige Quellen erhalten einen nummerierten Dateinamen. `agent instructions/AGENTS.md` erklärt, wie ein Agent daraus neue, belegte Wissensnotizen erstellt. Der Ordner `ressources/` ist für manuell hinzugefügte Agent-Dateien vorgesehen. Diese Kuratierung und inhaltliche Prüfung laufen **nicht automatisch**. Die vollständige Bibliothekssicherung bleibt ein anderes ZIP-Format und kann in Contexter wieder importiert werden; das OKF-Quellen-ZIP dient dem Lesen und Weiterverarbeiten.
 
-Test.7 ergänzt außerdem „Papierkorb endgültig leeren“ mit Bestätigung sowie Einstellungen (Zahnrad rechts oben) mit Deutsch/Englisch-Umschaltung. Die Spracheinstellung gilt nur auf dem jeweiligen Gerät und übersetzt keine Quelleninhalte.
+Test.7 ergänzt außerdem „Papierkorb endgültig leeren“ mit Bestätigung sowie Einstellungen für Sprache und Farbthema. Die Spracheinstellung und der Dunkelmodus gelten jeweils nur auf dem jeweiligen Gerät.
 
 - Komplette Teilen-/Export-/Wiederherstellungsrunde auf einem echten Android-Gerät. Der YouTube-Abruf wurde dort bereits erprobt; die übrigen Flüsse wurden bislang nur im Emulator geprüft.
 - Inhaltstreue der Parser an schwierigeren PDF-, DOCX-, EPUB- und Webseiten-Beispielen. OCR für reine Bild-PDFs ist nicht enthalten.

@@ -2,7 +2,7 @@
 
 ## Android
 
-Die bereitgestellte `contexter-android-0.9.0-test.8.apk` auf das Android-Gerät übertragen, öffnen und die Installation aus dieser Quelle für diesen Vorgang erlauben. Alternativ bei aktiviertem USB-Debugging: `adb install -r contexter-android-0.9.0-test.8.apk`. Die APK ist eine Debug-Version und nicht für den Store signiert. Vor einem späteren Signaturwechsel unbedingt die Sicherung außerhalb der App speichern.
+Die bereitgestellte `contexter-android-0.9.0-test.9.apk` auf das Android-Gerät übertragen, öffnen und die Installation aus dieser Quelle für diesen Vorgang erlauben. Alternativ bei aktiviertem USB-Debugging: `adb install -r contexter-android-0.9.0-test.9.apk`. Die APK ist eine Debug-Version und nicht für den Store signiert. Vor einem späteren Signaturwechsel unbedingt die Sicherung außerhalb der App speichern.
 
 1. Contexter öffnen und ein Notebook anlegen. Eine kurze Textquelle hinzufügen, bearbeiten und einmal deaktivieren.
 2. Aus einer anderen App einen Weblink und eine TXT-/PDF-Datei über das Android-Teilen-Menü an Contexter senden. Die Eingänge sollten in der Inbox erscheinen. Bei nicht auslesbarer Datei erscheint ein erneut versuchbarer Eingang.
@@ -17,6 +17,7 @@ Die bereitgestellte `contexter-android-0.9.0-test.8.apk` auf das Android-Gerät 
 11. Rechts oben das Zahnrad öffnen und auf English stellen. Navigation, Importfenster, Schaltflächen, Bestätigungen und Kurzmeldungen sollten englisch sein; bereits gespeicherte Quellen und Notebook-Titel bleiben unverändert. Nach App-Neustart sollte English eingestellt bleiben.
 12. Eine Testquelle und ein Testnotebook in den Papierkorb legen. Im Papierkorb „Papierkorb endgültig leeren“ wählen und die Bestätigung prüfen. Nur bestätigen, wenn die Inhalte nicht mehr gebraucht werden: Die App kann sie danach nicht wiederherstellen. Eine vorher exportierte Sicherung bleibt davon unberührt.
 13. Ein Notebook mit mindestens zwei Quellen als „ZIP mit Einzeldateien“ exportieren und den Inhalt des ZIP direkt in Obsidian öffnen. `index.md`, `sources/`, `agent instructions/AGENTS.md` und `ressources/` liegen direkt im Root; es gibt keinen zusätzlichen `contexter/`-Ordner. In `sources/` sollten lesbare Dateinamen und in jeder geöffneten Notiz der Quellentitel als Überschrift erscheinen. `index.md` sollte zu den Quellen verlinken. `AGENTS.md` ist eine Anleitung zum Erstellen eines kuratierten OKF-Vaults; der Export erstellt noch keine solchen Konzepte. Lege bei Bedarf eigene Agent-Dateien in `ressources/` ab. Dieses ZIP ist **nicht** die wiederherstellbare Bibliothekssicherung.
+14. In den Einstellungen das Farbthema auf „Dunkel“ stellen. App-Hintergrund, Karten, Detailansicht und Dialoge sollten dunkle Flächen mit gut lesbarer heller Schrift zeigen. Nach einem Neustart sollte die Auswahl erhalten bleiben.
 
 ## Chromium-Erweiterung
 

@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ShareInboxPlugin.class);
         registerPlugin(YtDlpPlugin.class);
+        registerPlugin(NotebookFolderPlugin.class);
         super.onCreate(savedInstanceState);
         ShareInboxPlugin.capture(this, getIntent());
     }

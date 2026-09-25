@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import YAML from 'yaml';
-import { bundleMarkdown, bundleText, bundleZip, markdownToText, sourceMarkdown } from './export';
+import { agentGuide, bundleMarkdown, bundleText, bundleZip, markdownToText, notebookFolderFiles, sourceMarkdown } from './export';
 import { createSource, findDuplicate, sourceIdentity, type Library } from './model';
 
 const notebook = { id: 'n-1', title: 'Recherche: Geräte', createdAt: '2026-09-24T12:00:00Z' };
@@ -49,6 +49,17 @@ describe('portable exports', () => {
     expect(article).toContain('https://example.com/a?x=1');
     expect(article).toContain('# Artikel: „Daten“');
     expect(YAML.parse(guide!.split('---')[1]).type).toBe('Playbook');
+  });
+
+  it('uses the ZIP folder structure for live notebook folders and protects original sources', () => {
+    const files = notebookFolderFiles(notebook, [source]);
+    expect(files.map(file => file.path)).toEqual(expect.arrayContaining([
+      'index.md', 'sources/Artikel „Daten“.md', 'agent instructions/AGENTS.md', 'ressources/README.md',
+    ]));
+    const guide = agentGuide();
+    expect(guide).toContain('strikt schreibgeschützt');
+    expect(guide).toContain('außerhalb des Contexter-Quellordners');
+    expect(guide).toContain('frage den Nutzer danach');
   });
 
   it('uses distinct readable filenames for repeated or unsafe titles', async () => {

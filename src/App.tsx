@@ -10,6 +10,7 @@ import { youtubeTranscriptLocal } from './ytdlp';
 import { cleanTimestampedText } from './subtitles';
 import { prepareYouTubeCookies } from './youtube-cookies';
 import { loadLanguage, loadTheme, translateUi, type Language, type Theme } from './i18n';
+import { chooseNotebookFolder, disconnectNotebookFolder, notebookFolderName, syncNotebookFolder } from './notebook-folder';
 import './styles.css';
 
 type Dialog = 'add' | 'export' | 'notebook' | 'notebookActions' | 'trash' | 'manage' | 'shares' | 'settings' | null;
@@ -73,6 +74,9 @@ export default function App() {
   const [visibleCatalogCount, setVisibleCatalogCount] = useState(100);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [notebookFolder, setNotebookFolder] = useState('');
+  const [folderSyncBusy, setFolderSyncBusy] = useState(false);
+  const folderSyncRunning = useRef(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
@@ -87,6 +91,35 @@ export default function App() {
       setLoaded(true);
     }).catch(error => { setNotice(String(error)); setLoaded(true); });
   }, []);
+
+  useEffect(() => { void notebookFolderName().then(value => setNotebookFolder(value || '')).catch(() => setNotebookFolder('')); }, []);
+
+  async function syncFolderNow(sourceLibrary = libraryRef.current, showNotice = false) {
+    if (folderSyncRunning.current) return;
+    folderSyncRunning.current = true;
+    try {
+      const result = await syncNotebookFolder(sourceLibrary);
+      if (result.library !== sourceLibrary) {
+        await saveLibrary(result.library);
+        libraryRef.current = result.library;
+        setLibrary(result.library);
+      }
+      if (showNotice && result.changed.length) setNotice(message(`${result.changed.length} externe Änderung(en) aus dem Notebook-Ordner übernommen.`, `${result.changed.length} external change(s) imported from the notebook folder.`));
+      if (showNotice && result.conflicts.length) setNotice(message(`Konflikt bei ${result.conflicts.join(', ')}: Die externe Datei blieb erhalten; die App-Version wurde als Konfliktkopie gesichert.`, `Conflict in ${result.conflicts.join(', ')}: the external file was preserved and the app version was saved as a conflict copy.`));
+    } catch (error) {
+      if (showNotice) setNotice(message(`Ordnerabgleich fehlgeschlagen: ${String(error)}`, `Folder sync failed: ${String(error)}`));
+    } finally { folderSyncRunning.current = false; }
+  }
+
+  useEffect(() => {
+    if (!loaded) return;
+    void syncFolderNow(libraryRef.current, false);
+    const refresh = () => { if (document.visibilityState === 'visible') void syncFolderNow(libraryRef.current, true); };
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [loaded]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -135,6 +168,7 @@ export default function App() {
       await saveLibrary(next);
       libraryRef.current = next;
       setLibrary(next);
+      await syncFolderNow(next, true);
     });
     saveQueue.current.catch(error => setNotice(message(`Speichern fehlgeschlagen: ${String(error)}`, `Save failed: ${String(error)}`)));
     return saveQueue.current;
@@ -700,7 +734,7 @@ export default function App() {
     </section></div>}
 
     {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label={t("Dialog")}><div className="modal-head"><div><div className="eyebrow">{dialog === 'settings' ? 'Contexter' : notebook?.title}</div><h2>{t(dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : dialog === 'settings' ? 'Einstellungen' : 'Notebook erstellen oder importieren')}</h2></div><button className="icon-button" disabled={busy} onClick={() => setDialog(null)} aria-label={t("Schließen")}>×</button></div>
-      {dialog === 'settings' && <div className="modal-body"><label>{t('SPRACHE')}<select value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="de">Deutsch</option><option value="en">English</option></select></label><p className="helper">{t('Die Spracheinstellung wird nur auf diesem Gerät gespeichert. Quelleninhalte werden nicht übersetzt.')}</p><label>{t('FARBTHEMA')}<select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="light">{t('Hell')}</option><option value="dark">{t('Dunkel')}</option></select></label><p className="helper">{t('Das Design wird nur auf diesem Gerät gespeichert.')}</p><p className="helper">{t('Weitere Einstellungen können später hier ergänzt werden.')}</p></div>}
+      {dialog === 'settings' && <div className="modal-body"><label>{t('SPRACHE')}<select value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="de">Deutsch</option><option value="en">English</option></select></label><p className="helper">{t('Die Spracheinstellung wird nur auf diesem Gerät gespeichert. Quelleninhalte werden nicht übersetzt.')}</p><label>{t('FARBTHEMA')}<select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="light">{t('Hell')}</option><option value="dark">{t('Dunkel')}</option></select></label><p className="helper">{t('Das Design wird nur auf diesem Gerät gespeichert.')}</p><div className="backup-section"><h3>{t('Notebook-Ordner synchronisieren')}</h3><p>{t('Quellen werden als Markdown in denselben Ordnern wie beim ZIP-Export angelegt. Externe Markdown-Änderungen werden beim Öffnen, im Vordergrund alle 30 Sekunden und nach Änderungen in Contexter eingelesen. Zusätzliche Dateien werden nicht gelöscht.')}</p>{notebookFolder && <p className="helper">{t('Verbunden: ')}{notebookFolder}</p>}<div className="modal-actions"><button className="button primary" disabled={folderSyncBusy} onClick={() => { setFolderSyncBusy(true); void chooseNotebookFolder().then(async name => { setNotebookFolder(name); await syncFolderNow(libraryRef.current, true); }).catch(error => setNotice(String(error))).finally(() => setFolderSyncBusy(false)); }}>{folderSyncBusy ? t('Ordner wird verbunden …') : notebookFolder ? t('Ordner ändern / erneut verbinden') : t('Ordner auswählen')}</button>{notebookFolder && <><button className="button subtle" disabled={folderSyncBusy} onClick={() => { setFolderSyncBusy(true); void syncFolderNow(libraryRef.current, true).finally(() => setFolderSyncBusy(false)); }}>{t('Jetzt abgleichen')}</button><button className="button danger" disabled={folderSyncBusy} onClick={() => { void disconnectNotebookFolder().then(() => { setNotebookFolder(''); setNotice(t('Notebook-Ordner getrennt. Dateien bleiben erhalten.')); }).catch(error => setNotice(String(error))); }}>{t('Trennen')}</button></>}</div></div><p className="helper">{t('Weitere Einstellungen können später hier ergänzt werden.')}</p></div>}
       {dialog === 'notebookActions' && contextNotebook && <div className="modal-body"><p className="helper">{contextNotebook.title} · {library.sources.filter(item => item.notebookId === contextNotebook.id && !item.deletedAt).length}{t(" Quellen")}</p><div className="notebook-action-list"><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setDialog(null); }}>{t("Öffnen")}</button><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setNotebookName(contextNotebook.title); setDialog('manage'); }}>{t("Umbenennen / archivieren")}</button><button className="button danger" onClick={() => void deleteNotebook(contextNotebook.id)}>{t("In den Papierkorb")}</button></div><p className="helper">{t("Zum Sortieren oder Löschen kannst du das Griffsymbol ⋮⋮ neben dem Notebook ziehen.")}</p></div>}
       {dialog === 'shares' && <div className="modal-body"><p className="helper">{t("Diese Eingänge bleiben erhalten, bis der Import gelingt oder du sie ausdrücklich verwirfst. Spätere Eingänge werden trotzdem weiterverarbeitet.")}</p><div className="trash-list">{shareErrors.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{item.message}</small></span><button className="button danger" onClick={() => void discardSharedItem(item.id)}>{t("Verwerfen")}</button></div>)}</div><button className="button primary wide" onClick={() => setShareRetry(value => value + 1)}>{t("Erneut versuchen")}</button></div>}
       {dialog === 'trash' && <div className="modal-body"><p className="helper">{t("Notebooks und Quellen bleiben lokal erhalten, bis du sie wiederherstellst oder den Papierkorb endgültig leerst. Bereits exportierte Sicherungen ändern sich dadurch nicht.")}</p>{deletedNotebooks.length + deletedSources.length === 0 ? <p className="helper">{t("Der Papierkorb ist leer.")}</p> : <><div className="trash-list">{deletedNotebooks.map(item => <div key={item.id}><span><strong>▤ {item.title}</strong><small>{t("Notebook · ")}{library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length}{t(" Quellen")}</small></span><button className="button subtle" onClick={() => void undeleteNotebook(item.id)}>{t("Wiederherstellen")}</button></div>)}{deletedSources.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{t("Quelle · ")}{library.notebooks.find(book => book.id === item.notebookId)?.title || 'Unbekanntes Notebook'}</small></span><button className="button subtle" onClick={() => void restoreSource(item)}>{t("Wiederherstellen")}</button></div>)}</div><div className="modal-actions"><button className="button danger" onClick={() => void permanentlyEmptyTrash()}>{t("Papierkorb endgültig leeren")}</button></div></>}</div>}

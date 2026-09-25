@@ -33,6 +33,7 @@ public class ShareInboxPlugin extends Plugin {
     private static final String PREFS = "share-inbox";
     private static final String KEY = "pending";
     private static final int MAX_BYTES = 25 * 1024 * 1024;
+    private static final int MAX_BACKUP_BYTES = 100 * 1024 * 1024;
     private static WeakReference<ShareInboxPlugin> active = new WeakReference<>(null);
 
     @PluginMethod
@@ -62,13 +63,13 @@ public class ShareInboxPlugin extends Plugin {
     static synchronized void capture(Activity activity, Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
-        if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action)) return;
+        if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action) && !Intent.ACTION_VIEW.equals(action)) return;
 
         try {
             JSONArray queue = readQueue(activity);
             File directory = new File(activity.getFilesDir(), "incoming");
             if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException("Cannot create incoming directory");
-            String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+            String text = Intent.ACTION_VIEW.equals(action) ? null : intent.getStringExtra(Intent.EXTRA_TEXT);
             if (text != null && !text.trim().isEmpty()) {
                 byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_BYTES) throw new IllegalStateException("Shared text exceeds 25 MiB");
@@ -84,7 +85,9 @@ public class ShareInboxPlugin extends Plugin {
             }
 
             ArrayList<Uri> streams = new ArrayList<>();
-            if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            if (Intent.ACTION_VIEW.equals(action)) {
+                if (intent.getData() != null) streams.add(intent.getData());
+            } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
                 ArrayList<Uri> items = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
                 if (items != null) streams.addAll(items);
             } else {
@@ -93,6 +96,12 @@ public class ShareInboxPlugin extends Plugin {
             }
 
             for (Uri uri : streams) {
+                String filename = queryName(activity, uri);
+                String mime = activity.getContentResolver().getType(uri);
+                boolean backup = filename.toLowerCase(java.util.Locale.ROOT).endsWith(".zip") ||
+                    "application/zip".equalsIgnoreCase(mime) || "application/x-zip-compressed".equalsIgnoreCase(mime);
+                if (Intent.ACTION_VIEW.equals(action) && !backup) continue;
+                int limit = backup ? MAX_BACKUP_BYTES : MAX_BYTES;
                 String id = UUID.randomUUID().toString();
                 File target = new File(directory, id);
                 try (InputStream input = activity.getContentResolver().openInputStream(uri);
@@ -103,7 +112,7 @@ public class ShareInboxPlugin extends Plugin {
                     int read;
                     while ((read = input.read(buffer)) != -1) {
                         total += read;
-                        if (total > MAX_BYTES) throw new IllegalStateException("Shared file exceeds 25 MiB");
+                        if (total > limit) throw new IllegalStateException(backup ? "ZIP exceeds 100 MiB" : "Shared file exceeds 25 MiB");
                         output.write(buffer, 0, read);
                     }
                     output.flush();
@@ -113,9 +122,9 @@ public class ShareInboxPlugin extends Plugin {
                 }
                 JSONObject item = new JSONObject();
                 item.put("id", id);
-                item.put("kind", "file");
-                item.put("filename", queryName(activity, uri));
-                item.put("mime", activity.getContentResolver().getType(uri));
+                item.put("kind", backup ? "backup" : "file");
+                item.put("filename", filename);
+                item.put("mime", mime);
                 queue.put(item);
                 persistQueue(activity, queue);
             }
@@ -186,9 +195,9 @@ public class ShareInboxPlugin extends Plugin {
             String kind = item.getString("kind");
             result.put("kind", kind);
             File file = new File(new File(getContext().getFilesDir(), "incoming"), id);
-            if (!file.isFile() || file.length() > MAX_BYTES) { call.reject("Shared item unavailable"); return; }
+            if (!file.isFile() || file.length() > ("backup".equals(kind) ? MAX_BACKUP_BYTES : MAX_BYTES)) { call.reject("Shared item unavailable"); return; }
             result.put("uri", Uri.fromFile(file).toString());
-            if ("file".equals(kind)) {
+            if ("file".equals(kind) || "backup".equals(kind)) {
                 result.put("filename", item.optString("filename", "geteilte-datei"));
                 result.put("mime", item.optString("mime", "application/octet-stream"));
             }

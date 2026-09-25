@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import type { Library, Source } from './model';
-import { sourceIdentity } from './model';
+import { createNotebook, sourceIdentity } from './model';
 import { sourceMarkdown } from './export';
 
 const MAX_BACKUP_BYTES = 100 * 1024 * 1024;
@@ -61,6 +61,24 @@ export async function readLibraryBackup(file: File): Promise<Library> {
   const contents = await entry.async('string');
   if (contents.length > MAX_BACKUP_BYTES) throw new Error('Entpackte Sicherung ist größer als 100 MiB.');
   return parseLibraryBackup(contents);
+}
+
+export function importLibraryAsNotebook(local: Library, incoming: Library, title: string): { library: Library; notebookId: string; added: number } {
+  if (!title.trim()) throw new Error('Bitte einen Notebook-Namen eingeben.');
+  const notebook = createNotebook(title);
+  // A separate import is a snapshot, not a synchronization: never reuse source IDs.
+  const copies = incoming.sources.filter(source => !source.deletedAt).map(source => ({
+    ...source,
+    id: crypto.randomUUID(),
+    notebookId: notebook.id,
+    conflictOf: undefined,
+    warnings: [...source.warnings],
+  }));
+  return {
+    library: { ...local, notebooks: [...local.notebooks, notebook], sources: [...local.sources, ...copies] },
+    notebookId: notebook.id,
+    added: copies.length,
+  };
 }
 
 export function mergeLibraries(local: Library, incoming: Library): { library: Library; added: number; conflicts: number } {

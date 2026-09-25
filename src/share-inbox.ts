@@ -2,7 +2,7 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor
 
 interface SharedItem {
   id: string;
-  kind: 'text' | 'file';
+  kind: 'text' | 'file' | 'backup';
   uri: string;
   filename?: string;
   mime?: string;

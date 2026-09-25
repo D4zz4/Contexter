@@ -2,12 +2,12 @@
 
 ## Android
 
-Die bereitgestellte `contexter-android-0.9.0-test.5.apk` auf das Android-Gerät übertragen, öffnen und die Installation aus dieser Quelle für diesen Vorgang erlauben. Alternativ bei aktiviertem USB-Debugging: `adb install -r contexter-android-0.9.0-test.5.apk`. Die APK ist eine Debug-Version und nicht für den Store signiert. Vor einem späteren Signaturwechsel unbedingt die Sicherung außerhalb der App speichern.
+Die bereitgestellte `contexter-android-0.9.0-test.6.apk` auf das Android-Gerät übertragen, öffnen und die Installation aus dieser Quelle für diesen Vorgang erlauben. Alternativ bei aktiviertem USB-Debugging: `adb install -r contexter-android-0.9.0-test.6.apk`. Die APK ist eine Debug-Version und nicht für den Store signiert. Vor einem späteren Signaturwechsel unbedingt die Sicherung außerhalb der App speichern.
 
 1. Contexter öffnen und ein Notebook anlegen. Eine kurze Textquelle hinzufügen, bearbeiten und einmal deaktivieren.
 2. Aus einer anderen App einen Weblink und eine TXT-/PDF-Datei über das Android-Teilen-Menü an Contexter senden. Die Eingänge sollten in der Inbox erscheinen. Bei nicht auslesbarer Datei erscheint ein erneut versuchbarer Eingang.
 3. Im Notebook „Exportieren“ wählen und Markdown oder ZIP an „Dateien“, E-Mail, Telegram oder eine Cloud-App geben. Contexter wählt keinen Dienst automatisch.
-4. Über „Exportieren → Sicherung speichern / teilen“ eine Sicherungs-ZIP außerhalb der App ablegen. Auf dem zweiten Gerät dieselbe APK installieren, die ZIP dorthin übertragen und in Contexter „Exportieren → Zusammenführen“ wählen. Für eine vollständige Wiederherstellung statt Merge „Ersetzen“ verwenden; das überschreibt die dortige Bibliothek nach Bestätigung.
+4. Über „Exportieren → Sicherung speichern / teilen“ eine vollständige Contexter-Sicherungs-ZIP außerhalb der App ablegen. Auf dem zweiten Gerät dieselbe APK installieren und die ZIP dorthin übertragen. Tippe bei Notebooks auf „+“ und wähle „Sicherung importieren“ → „Alles als neues Notebook importieren“; gib im selben Fenster den Notebook-Namen ein. Alternativ die ZIP im Android-Dateimanager mit „Öffnen mit → Contexter“ öffnen. Die vorhandenen Notebooks sollen erhalten bleiben. Für den Geräteabgleich kannst du stattdessen „Mit bestehender Bibliothek zusammenführen“ wählen; dafür bleibt auch „Exportieren → Zusammenführen“ verfügbar. „Exportieren → Ersetzen“ überschreibt nach Bestätigung die gesamte Bibliothek. Der ZIP-Export eines einzelnen Notebooks ist keine vollständige Sicherung und kann hier nicht wiederhergestellt werden.
 5. Nach App-Neustart prüfen, ob Notebooks und Texte erhalten geblieben sind. Zum Konflikttest dieselbe Quelle auf beiden Geräten verschieden bearbeiten, eine Sicherung übertragen und zusammenführen; beide Fassungen sollten sichtbar bleiben.
 6. Ein Notebook lange drücken: Das Aktionsfenster sollte „In den Papierkorb“ anbieten. Nach Bestätigung über „Papierkorb“ wiederherstellen. Über das Griffsymbol ⋮⋮ kannst du ein Notebook auf ein anderes ziehen, um es zu sortieren, oder auf den Papierkorb, um es nach Bestätigung zu löschen. Die Quellen bleiben dabei erhalten.
 7. Einen YouTube-Link kopieren und auf „Quelle hinzufügen“ tippen. Nur bei erkanntem YouTube-Link sollte die App fragen, ob sie ihn in den YouTube-Tab übernehmen soll. Ohne Link öffnet sich der normale Dialog.
@@ -23,7 +23,7 @@ Die bereitgestellte `contexter-chrome-test.zip` zuerst entpacken. In `chrome://e
 
 Gerätemodell und Android-Version bzw. Chrome-Version; welche Eingabe geteilt oder importiert wurde (bei privaten Inhalten nur Dateityp/Größe nennen); erwartetes und tatsächliches Ergebnis; ob der Fehler nach Neustart wiederkehrt. API-Schlüssel niemals in Screenshots oder Fehlerberichte übernehmen.
 
-Bekannte Grenzen: reine Bild-PDFs ohne OCR; manche Websites und YouTube blockieren automatisches Abrufen; DRM-EPUBs werden nicht unterstützt; Dateieingang bis 25 MiB; URL-Inhalt bis 10 MiB; kein automatischer Geräteabgleich. Der direkte yt-dlp-Abruf ist nur in der 64-Bit-Android-App integriert, nicht in der Chromium-Erweiterung. Optionale externe Anbieter sind ohne eigenen Schlüssel nicht live geprüft.
+Bekannte Grenzen: reine Bild-PDFs ohne OCR; manche Websites und YouTube blockieren automatisches Abrufen; DRM-EPUBs werden nicht unterstützt; normaler Dateieingang bis 25 MiB und Contexter-Sicherungs-ZIP bis 100 MiB; URL-Inhalt bis 10 MiB; kein automatischer Geräteabgleich. Der direkte yt-dlp-Abruf ist nur in der 64-Bit-Android-App integriert, nicht in der Chromium-Erweiterung. Optionale externe Anbieter sind ohne eigenen Schlüssel nicht live geprüft.
 
 ## YouTube ohne API-Schlüssel: Ausweichweg über Untertiteldatei
 

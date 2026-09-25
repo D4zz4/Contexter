@@ -4,7 +4,7 @@ import { extractActiveTab, extractFile, extractUrl } from './extract';
 import { createNotebook, createSource, emptyLibrary, findDuplicate, INBOX_ID, metrics, reorderNotebook, restoreNotebook, trashNotebook, type Library, type Source } from './model';
 import { loadLibrary, saveLibrary } from './storage';
 import { isNative, shareInbox, sharedFile, sharedText } from './share-inbox';
-import { backupLibrary, mergeLibraries, readLibraryBackup } from './backup';
+import { backupLibrary, importLibraryAsNotebook, mergeLibraries, readLibraryBackup } from './backup';
 import { braveSearch, isYouTubeVideoUrl, parseYouTubeLinks, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
 import { youtubeTranscriptLocal } from './ytdlp';
 import { cleanTimestampedText } from './subtitles';
@@ -40,6 +40,11 @@ export default function App() {
   const suppressNotebookClick = useRef(false);
   const [addTab, setAddTab] = useState<AddTab>('url');
   const [notebookName, setNotebookName] = useState('');
+  const [notebookStep, setNotebookStep] = useState<'choice' | 'create' | 'import'>('choice');
+  const [archiveAction, setArchiveAction] = useState<'new' | 'merge'>('new');
+  const [archiveFile, setArchiveFile] = useState<File | null>(null);
+  const [archiveError, setArchiveError] = useState('');
+  const incomingArchiveId = useRef<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [youtubeBatchProgress, setYoutubeBatchProgress] = useState('');
   const [youtubeBatchErrors, setYoutubeBatchErrors] = useState<Array<{ url: string; message: string }>>([]);
@@ -66,6 +71,7 @@ export default function App() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const archiveInput = useRef<HTMLInputElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
   const restoreMode = useRef<'replace' | 'merge'>('merge');
 
@@ -76,6 +82,29 @@ export default function App() {
       setLoaded(true);
     }).catch(error => { setNotice(String(error)); setLoaded(true); });
   }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 3000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 720px)').matches) {
+      document.querySelector(`[data-notebook-id="${selectedNotebook}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [selectedNotebook, library.notebooks.length]);
+
+  function openNotebookDialog() {
+    setNotebookStep(incomingArchiveId.current ? 'import' : 'choice');
+    if (!incomingArchiveId.current) {
+      setNotebookName('');
+      setArchiveAction('new');
+      setArchiveFile(null);
+    }
+    setArchiveError('');
+    setDialog('notebook');
+  }
 
   useEffect(() => {
     try { localStorage.setItem('contexter-catalog-draft', JSON.stringify({ url: catalogUrl, type: catalogType, ids: catalogIds, selected: selectedCatalogIds, limit: catalogLimit })); }
@@ -327,6 +356,19 @@ export default function App() {
           if (stopped) break;
           try {
             const item = await inbox.readItem({ id: summary.id });
+            if (item.kind === 'backup') {
+              if (!incomingArchiveId.current) {
+                const file = await sharedFile(item);
+                incomingArchiveId.current = item.id;
+                setArchiveFile(file);
+                setNotebookName(file.name.replace(/\.zip$/i, '').replace(/^contexter-backup-?/i, '') || 'Importiertes Notebook');
+                setArchiveAction('new');
+                setArchiveError('');
+                setNotebookStep('import');
+                setDialog('notebook');
+              }
+              continue;
+            }
             if (item.kind === 'file') {
               const file = await sharedFile(item);
               const extracted = await extractFile(file);
@@ -416,6 +458,61 @@ export default function App() {
       setDialog(null);
     } catch (error) { setNotice(`Wiederherstellung fehlgeschlagen: ${String(error)}`); }
     finally { if (backupInput.current) backupInput.current.value = ''; }
+  }
+
+  async function createNewNotebook() {
+    if (!notebookName.trim()) return;
+    const item = createNotebook(notebookName);
+    try {
+      await commit(value => ({ ...value, notebooks: [...value.notebooks, item] }));
+      setSelectedNotebook(item.id);
+      setNotebookName('');
+      setDialog(null);
+      setNotice('Notebook erstellt.');
+    } catch (error) { setArchiveError(`Notebook konnte nicht erstellt werden: ${String(error)}`); }
+  }
+
+  async function importNotebookArchive() {
+    if (!archiveFile) { setArchiveError('Bitte eine Contexter-Sicherung als ZIP oder JSON auswählen.'); return; }
+    if (archiveAction === 'new' && !notebookName.trim()) { setArchiveError('Bitte einen Namen für das neue Notebook eingeben.'); return; }
+    setBusy(true);
+    setArchiveError('');
+    try {
+      const incoming = await readLibraryBackup(archiveFile);
+      await saveQueue.current;
+      if (archiveAction === 'new') {
+        const result = importLibraryAsNotebook(libraryRef.current, incoming, notebookName);
+        await commit(() => result.library);
+        setSelectedNotebook(result.notebookId);
+        setNotice(`Neues Notebook mit ${result.added} Quelle(n) importiert.`);
+      } else {
+        const result = mergeLibraries(libraryRef.current, incoming);
+        if (!window.confirm(`Diese Sicherung mit deiner Bibliothek zusammenführen? ${result.added} Quelle(n) kommen hinzu; ${result.conflicts} abweichende Version(en) bleiben als Konfliktkopie erhalten.`)) return;
+        await commit(() => result.library);
+        setNotice(`Sicherung zusammengeführt: ${result.added} neue Quellen, ${result.conflicts} Konfliktkopien.`);
+      }
+      if (incomingArchiveId.current) {
+        await shareInbox().ackItem({ id: incomingArchiveId.current });
+        incomingArchiveId.current = null;
+        setShareRetry(value => value + 1);
+      }
+      setArchiveFile(null);
+      setSelectedSource(null);
+      setDialog(null);
+    } catch (error) { setArchiveError(`Import fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { setBusy(false); }
+  }
+
+  async function discardIncomingArchive() {
+    const id = incomingArchiveId.current;
+    if (!id || !window.confirm('Diese empfangene ZIP verwerfen? Sie wurde noch nicht importiert. Die ursprüngliche Datei in deiner Dateien-App bleibt erhalten.')) return;
+    try {
+      await shareInbox().ackItem({ id });
+      incomingArchiveId.current = null;
+      setArchiveFile(null);
+      setDialog(null);
+      setShareRetry(value => value + 1);
+    } catch (error) { setArchiveError(`ZIP konnte nicht verworfen werden: ${String(error)}`); }
   }
 
   async function deleteSource(item: Source) {
@@ -540,14 +637,15 @@ export default function App() {
       </button>
       <div className="side-label">ARBEITSBEREICH</div>
       <button className={`nav-item ${selectedNotebook === INBOX_ID ? 'current' : ''}`} onClick={() => { setSelectedNotebook(INBOX_ID); setSelectedSource(null); }}><span className="nav-symbol">⌑</span> Inbox <span className="nav-count">{library.sources.filter(item => !item.deletedAt && item.notebookId === INBOX_ID).length}</span></button>
-      <div className="side-label side-label-row"><span>NOTEBOOKS</span><button className="icon-button" onClick={() => setDialog('notebook')} aria-label="Notebook erstellen">+</button></div>
+      <div className="side-label side-label-row"><span>NOTEBOOKS</span><button className="icon-button" onClick={openNotebookDialog} aria-label="Notebook erstellen oder importieren">+</button></div>
       <nav className="notebook-nav" aria-label="Notebooks">
         {library.notebooks.filter(item => item.id !== INBOX_ID && !item.archived && !item.deletedAt).map(item => <div key={item.id} data-notebook-id={item.id} className={`notebook-row ${draggedNotebookId === item.id ? 'dragging' : ''} ${dragHover === item.id && draggedNotebookId !== item.id ? 'drop-hover' : ''}`}>
           <button className={`nav-item ${selectedNotebook === item.id ? 'current' : ''}`} onClick={() => { if (suppressNotebookClick.current) { suppressNotebookClick.current = false; return; } setSelectedNotebook(item.id); setSelectedSource(null); }} onPointerDown={() => startNotebookPress(item.id)} onPointerUp={cancelNotebookPress} onPointerLeave={cancelNotebookPress} onPointerCancel={cancelNotebookPress} onContextMenu={event => { event.preventDefault(); openNotebookActions(item.id); }} title="Öffnen; lange drücken für Aktionen"><span className="nav-symbol">▤</span><span className="truncate">{item.title}</span><span className="nav-count">{library.sources.filter(source => !source.deletedAt && source.notebookId === item.id).length}</span></button>
           <button className="notebook-grip" aria-label={`${item.title} ziehen und sortieren`} title="Zum Sortieren oder in den Papierkorb ziehen" onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDraggedNotebookId(item.id); setDragPosition({ x: event.clientX, y: event.clientY }); }} onPointerMove={event => { if (draggedNotebookId !== item.id) return; setDragPosition({ x: event.clientX, y: event.clientY }); setDragHover(dropTarget(event.clientX, event.clientY)); }} onPointerUp={event => { if (draggedNotebookId === item.id) endNotebookDrag(item.id, event.clientX, event.clientY); }} onPointerCancel={() => { setDraggedNotebookId(null); setDragHover(null); setDragPosition(null); }}>⋮⋮</button>
         </div>)}
       </nav>
-      <button className="side-new" onClick={() => setDialog('notebook')}>+ Neues Notebook</button>
+      <button className="side-new" onClick={openNotebookDialog}>+ Notebook erstellen / importieren</button>
+      {incomingArchiveId.current && <button className="side-new" onClick={() => { setNotebookStep('import'); setDialog('notebook'); }}>ZIP-Import fortsetzen</button>}
       <button className="side-new" onClick={() => { setNotebookName(notebook.title); setDialog('manage'); }}>Notebooks verwalten</button>
       <button className={`side-new trash-drop ${dragHover === 'trash' ? 'drop-hover' : ''}`} data-drop-trash onClick={() => setDialog('trash')}>Papierkorb · {deletedSources.length + deletedNotebooks.length}</button>
       {shareErrors.length > 0 && <button className="side-new" onClick={() => setDialog('shares')}>Geteilte Eingänge · {shareErrors.length} Fehler</button>}
@@ -571,12 +669,18 @@ export default function App() {
       <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived && !item.deletedAt).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}{source.kind === 'youtube' && !source.editedByUser && cleanTimestampedText(source.body, true) !== source.body && <button className="button subtle" disabled={busy} onClick={() => void cleanSource(source)}>Text bereinigen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
     </section></div>}
 
-    {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen'}</h2></div><button className="icon-button" disabled={busy} onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
+    {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen oder importieren'}</h2></div><button className="icon-button" disabled={busy} onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
       {dialog === 'notebookActions' && contextNotebook && <div className="modal-body"><p className="helper">{contextNotebook.title} · {library.sources.filter(item => item.notebookId === contextNotebook.id && !item.deletedAt).length} Quellen</p><div className="notebook-action-list"><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setDialog(null); }}>Öffnen</button><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setNotebookName(contextNotebook.title); setDialog('manage'); }}>Umbenennen / archivieren</button><button className="button danger" onClick={() => void deleteNotebook(contextNotebook.id)}>In den Papierkorb</button></div><p className="helper">Zum Sortieren oder Löschen kannst du das Griffsymbol ⋮⋮ neben dem Notebook ziehen.</p></div>}
       {dialog === 'shares' && <div className="modal-body"><p className="helper">Diese Eingänge bleiben erhalten, bis der Import gelingt oder du sie ausdrücklich verwirfst. Spätere Eingänge werden trotzdem weiterverarbeitet.</p><div className="trash-list">{shareErrors.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{item.message}</small></span><button className="button danger" onClick={() => void discardSharedItem(item.id)}>Verwerfen</button></div>)}</div><button className="button primary wide" onClick={() => setShareRetry(value => value + 1)}>Erneut versuchen</button></div>}
       {dialog === 'trash' && <div className="modal-body"><p className="helper">Notebooks und Quellen bleiben lokal erhalten, bis du sie wiederherstellst. Eine Sicherungs-ZIP enthält sie ebenfalls.</p>{deletedNotebooks.length + deletedSources.length === 0 ? <p className="helper">Der Papierkorb ist leer.</p> : <div className="trash-list">{deletedNotebooks.map(item => <div key={item.id}><span><strong>▤ {item.title}</strong><small>Notebook · {library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length} Quellen</small></span><button className="button subtle" onClick={() => void undeleteNotebook(item.id)}>Wiederherstellen</button></div>)}{deletedSources.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>Quelle · {library.notebooks.find(book => book.id === item.notebookId)?.title || 'Unbekanntes Notebook'}</small></span><button className="button subtle" onClick={() => void restoreSource(item)}>Wiederherstellen</button></div>)}</div>}</div>}
       {dialog === 'manage' && <div className="modal-body">{notebook.id !== INBOX_ID && <><label>AKTUELLES NOTEBOOK<input value={notebookName} onChange={event => setNotebookName(event.target.value)} /></label><div className="modal-actions"><button className="button danger" onClick={() => void deleteNotebook(notebook.id)}>Löschen</button><button className="button subtle" onClick={() => void archiveNotebook()}>Archivieren</button><button className="button primary" disabled={!notebookName.trim()} onClick={() => void renameNotebook()}>Umbenennen</button></div></>}<div className="backup-section"><h3>Archivierte Notebooks</h3>{library.notebooks.filter(item => item.archived && !item.deletedAt).length === 0 ? <p>Keine archivierten Notebooks.</p> : <div className="trash-list">{library.notebooks.filter(item => item.archived && !item.deletedAt).map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length} Quellen</small></span><button className="button subtle" onClick={() => void unarchiveNotebook(item.id)}>Wiederherstellen</button></div>)}</div>}</div></div>}
-      {dialog === 'notebook' && <div className="modal-body"><label>NAME DES NOTEBOOKS<input autoFocus value={notebookName} placeholder="z. B. Context Engineering" onChange={event => setNotebookName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && notebookName.trim()) { const item = createNotebook(notebookName); void commit(value => ({ ...value, notebooks: [...value.notebooks, item] })); setSelectedNotebook(item.id); setNotebookName(''); setDialog(null); } }} /></label><button className="button primary wide" disabled={!notebookName.trim()} onClick={() => { const item = createNotebook(notebookName); void commit(value => ({ ...value, notebooks: [...value.notebooks, item] })); setSelectedNotebook(item.id); setNotebookName(''); setDialog(null); }}>Notebook erstellen</button></div>}
+      {dialog === 'notebook' && <div className="modal-body">
+        <div className="modal-actions"><button className={`button ${notebookStep === 'create' ? 'primary' : 'subtle'}`} disabled={busy} onClick={() => { setNotebookStep('create'); setArchiveError(''); }}>Neues Notebook erstellen</button><button className={`button ${notebookStep === 'import' ? 'primary' : 'subtle'}`} disabled={busy} onClick={() => { setNotebookStep('import'); setArchiveError(''); }}>Sicherung importieren</button></div>
+        {notebookStep === 'choice' && <p className="helper">Erstelle ein leeres Notebook oder importiere eine Contexter-Bibliothekssicherung als neues Notebook. Deine vorhandenen Notebooks bleiben dabei erhalten.</p>}
+        {notebookStep === 'create' && <><label>NAME DES NOTEBOOKS<input autoFocus value={notebookName} placeholder="z. B. Context Engineering" onChange={event => setNotebookName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void createNewNotebook(); }} /></label><button className="button primary wide" disabled={!notebookName.trim() || busy} onClick={() => void createNewNotebook()}>Notebook erstellen</button></>}
+        {notebookStep === 'import' && <><p className="helper">Wähle eine vollständige Contexter-Sicherung (.zip oder .json). „Als neues Notebook“ kopiert alle nicht gelöschten Quellen aus der Sicherung in ein eigenes Notebook. „Zusammenführen“ gleicht Notebooks und Quellen mit deiner Bibliothek ab und behält abweichende Versionen als Konfliktkopien.</p>{!incomingArchiveId.current && <><input ref={archiveInput} type="file" accept=".zip,.json,application/zip,application/json" disabled={busy} aria-label="Sicherungsdatei auswählen" onChange={event => { const file = event.target.files?.[0] || null; setArchiveFile(file); setArchiveError(''); if (file && !notebookName.trim()) setNotebookName(file.name.replace(/\.(zip|json)$/i, '') || 'Importiertes Notebook'); }} /><button className="button subtle wide" disabled={busy} onClick={() => archiveInput.current?.click()}>Sicherungsdatei auswählen</button></>}{archiveFile && <p className="helper">Ausgewählt: {archiveFile.name}</p>}<label>IMPORTART<select value={archiveAction} disabled={busy} onChange={event => setArchiveAction(event.target.value as 'new' | 'merge')}><option value="new">Alles als neues Notebook importieren</option><option value="merge">Mit bestehender Bibliothek zusammenführen</option></select></label>{archiveAction === 'new' && <label>NAME DES NEUEN NOTEBOOKS<input value={notebookName} placeholder="z. B. Import vom Handy" onChange={event => setNotebookName(event.target.value)} /></label>}<button className="button primary wide" disabled={busy || !archiveFile || archiveAction === 'new' && !notebookName.trim()} onClick={() => void importNotebookArchive()}>{busy ? 'Importiere …' : archiveAction === 'new' ? 'Als neues Notebook importieren' : 'Sicherung zusammenführen'}</button>{incomingArchiveId.current && <button className="button subtle wide" disabled={busy} onClick={() => void discardIncomingArchive()}>Empfangene ZIP verwerfen</button>}</>}
+        {archiveError && <div className="warning" role="alert">{archiveError}</div>}
+      </div>}
       {dialog === 'add' && <div className="modal-body">
         <div className="tabs">
           <button className={addTab === 'url' ? 'active' : ''} disabled={busy} onClick={() => setAddTab('url')}>Website / URL</button>

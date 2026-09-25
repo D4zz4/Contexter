@@ -27,6 +27,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
                 <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/x-subrip" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
@@ -37,9 +39,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
                 <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/x-subrip" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
 
         </activity>

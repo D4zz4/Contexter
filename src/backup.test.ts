@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
-import { backupLibrary, mergeLibraries, parseLibraryBackup } from './backup';
+import { backupLibrary, importLibraryAsNotebook, mergeLibraries, parseLibraryBackup } from './backup';
 import { createSource, emptyLibrary, trashNotebook } from './model';
 
 describe('library backup', () => {
@@ -67,5 +67,23 @@ describe('library backup', () => {
     expect(twice.added).toBe(0);
     expect(twice.library.notebooks).toHaveLength(3);
     expect(twice.library.sources).toHaveLength(1);
+  });
+
+  it('imports active sources from all backup notebooks into a separate new notebook', () => {
+    const local = emptyLibrary();
+    local.sources.push(createSource({ notebookId: 'inbox', kind: 'text', title: 'Vorhanden', body: 'Lokal' }));
+    const incoming = emptyLibrary();
+    incoming.notebooks.push({ id: 'other', title: 'Anderes Notebook', createdAt: '2026-09-24' });
+    incoming.sources.push(createSource({ notebookId: 'inbox', kind: 'text', title: 'Inbox-Quelle', body: 'A' }));
+    incoming.sources.push(createSource({ notebookId: 'other', kind: 'text', title: 'Notebook-Quelle', body: 'B' }));
+    incoming.sources.push({ ...createSource({ notebookId: 'other', kind: 'text', title: 'Im Papierkorb', body: 'C' }), deletedAt: '2026-09-24' });
+    const result = importLibraryAsNotebook(local, incoming, 'Mein Import');
+    expect(result.added).toBe(2);
+    expect(local.notebooks).toHaveLength(1);
+    expect(local.sources).toHaveLength(1);
+    expect(result.library.notebooks.at(-1)).toMatchObject({ id: result.notebookId, title: 'Mein Import' });
+    expect(result.library.sources.slice(1).map(source => source.title)).toEqual(['Inbox-Quelle', 'Notebook-Quelle']);
+    expect(result.library.sources.slice(1).every(source => source.notebookId === result.notebookId)).toBe(true);
+    expect(new Set(result.library.sources.map(source => source.id)).size).toBe(3);
   });
 });

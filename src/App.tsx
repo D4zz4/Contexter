@@ -657,6 +657,7 @@ export default function App() {
       <button className="brand" onClick={() => { setSelectedNotebook(INBOX_ID); setSelectedSource(null); }} aria-label={t("Contexter Startseite")}>
         <span className="brand-mark">{t("C")}<span>.</span></span><span>{t("Contexter")}<small>{t("DEIN KONTEXT. DEINE WAHL.")}</small></span>
       </button>
+      <button className="button subtle settings-button mobile-settings-button" onClick={() => setDialog('settings')} aria-label={language === 'de' ? 'Einstellungen' : 'Settings'} title={language === 'de' ? 'Einstellungen' : 'Settings'}>⚙</button>
       <div className="side-label">{t("ARBEITSBEREICH")}</div>
       <button className={`nav-item ${selectedNotebook === INBOX_ID ? 'current' : ''}`} onClick={() => { setSelectedNotebook(INBOX_ID); setSelectedSource(null); }}><span className="nav-symbol">⌑</span>{t(" Inbox ")}<span className="nav-count">{library.sources.filter(item => !item.deletedAt && item.notebookId === INBOX_ID).length}</span></button>
       <div className="side-label side-label-row"><span>{t("NOTEBOOKS")}</span><button className="icon-button" onClick={openNotebookDialog} aria-label={t("Notebook erstellen oder importieren")}>+</button></div>

@@ -41,9 +41,9 @@ describe('portable exports', () => {
 
   it('packages individual source files with an OKF root index', async () => {
     const zip = await JSZip.loadAsync(await bundleZip(notebook, [source]));
-    const index = await zip.file('contexter/index.md')?.async('string');
-    const article = await zip.file('contexter/sources/Artikel „Daten“.md')?.async('string');
-    const guide = await zip.file('contexter/AGENTS.md')?.async('string');
+    const index = await zip.file('index.md')?.async('string');
+    const article = await zip.file('sources/Artikel „Daten“.md')?.async('string');
+    const guide = await zip.file('agent instructions/AGENTS.md')?.async('string');
     expect(index).toContain('okf_version: "0.2"');
     expect(index).toContain('sources/Artikel%20%E2%80%9EDaten%E2%80%9C.md');
     expect(article).toContain('https://example.com/a?x=1');
@@ -55,8 +55,8 @@ describe('portable exports', () => {
     const first = createSource({ notebookId: notebook.id, kind: 'text', title: 'Notes / Test', body: 'One' });
     const second = createSource({ notebookId: notebook.id, kind: 'text', title: 'Notes : Test', body: 'Two' });
     const zip = await JSZip.loadAsync(await bundleZip(notebook, [first, second]));
-    expect(zip.file('contexter/sources/Notes Test.md')).not.toBeNull();
-    expect(zip.file('contexter/sources/Notes Test (2).md')).not.toBeNull();
+    expect(zip.file('sources/Notes Test.md')).not.toBeNull();
+    expect(zip.file('sources/Notes Test (2).md')).not.toBeNull();
   });
 });
 

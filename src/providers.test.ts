@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { braveSearch, youtubeCatalog, youtubeTranscript } from './providers';
+import { braveSearch, parseYouTubeLinks, youtubeCatalog, youtubeTranscript } from './providers';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('optional providers', () => {
+  it('accepts newline-separated videos and deduplicates URL variants before any provider call', () => {
+    expect(parseYouTubeLinks('https://youtu.be/dQw4w9WgXcQ\nhttps://www.youtube.com/watch?v=jNQXAC9IVRw\nhttps://www.youtube.com/shorts/dQw4w9WgXcQ bad')).toEqual({
+      urls: ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=jNQXAC9IVRw'],
+      invalid: ['bad'], repeats: 1,
+    });
+  });
   it('never sends a request before an explicit key is supplied', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

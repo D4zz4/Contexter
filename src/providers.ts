@@ -16,6 +16,21 @@ export function isYouTubeVideoUrl(value: string): boolean {
   return /^[A-Za-z0-9_-]{11}$/.test(videoId(value) || '');
 }
 
+export function parseYouTubeLinks(input: string): { urls: string[]; invalid: string[]; repeats: number } {
+  const urls: string[] = [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
+  let repeats = 0;
+  for (const value of input.trim().split(/\s+/u).filter(Boolean)) {
+    const id = videoId(value);
+    if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) { invalid.push(value); continue; }
+    if (seen.has(id)) { repeats++; continue; }
+    seen.add(id);
+    urls.push(`https://www.youtube.com/watch?v=${id}`);
+  }
+  return { urls, invalid, repeats };
+}
+
 function formatOffset(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   return `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor(seconds % 3600 / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;

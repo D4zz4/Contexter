@@ -5,8 +5,9 @@ import { createNotebook, createSource, emptyLibrary, findDuplicate, INBOX_ID, me
 import { loadLibrary, saveLibrary } from './storage';
 import { isNative, shareInbox, sharedFile, sharedText } from './share-inbox';
 import { backupLibrary, mergeLibraries, readLibraryBackup } from './backup';
-import { braveSearch, isYouTubeVideoUrl, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
+import { braveSearch, isYouTubeVideoUrl, parseYouTubeLinks, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
 import { youtubeTranscriptLocal } from './ytdlp';
+import { cleanTimestampedText } from './subtitles';
 import './styles.css';
 
 type Dialog = 'add' | 'export' | 'notebook' | 'notebookActions' | 'trash' | 'manage' | 'shares' | null;
@@ -39,6 +40,8 @@ export default function App() {
   const [addTab, setAddTab] = useState<AddTab>('url');
   const [notebookName, setNotebookName] = useState('');
   const [urlInput, setUrlInput] = useState('');
+  const [youtubeBatchProgress, setYoutubeBatchProgress] = useState('');
+  const [youtubeBatchErrors, setYoutubeBatchErrors] = useState<Array<{ url: string; message: string }>>([]);
   const [textTitle, setTextTitle] = useState('');
   const [textInput, setTextInput] = useState('');
   const [query, setQuery] = useState('');
@@ -89,19 +92,19 @@ export default function App() {
     return saveQueue.current;
   }
 
-  async function addSource(source: Source): Promise<boolean> {
+  async function addSource(source: Source, options: { open?: boolean; silent?: boolean } = {}): Promise<boolean> {
     let duplicate: Source | undefined;
     await commit(value => {
       duplicate = findDuplicate(value, source);
       return duplicate ? value : { ...value, sources: [...value.sources, source] };
     });
     if (duplicate) {
-      setNotice(`Bereits vorhanden: „${duplicate.title}“. Öffne die vorhandene Quelle oder füge eine andere hinzu.`);
-      setSelectedSource(duplicate.id);
+      if (!options.silent) setNotice(`Bereits vorhanden: „${duplicate.title}“. Öffne die vorhandene Quelle oder füge eine andere hinzu.`);
+      if (options.open !== false) setSelectedSource(duplicate.id);
       return false;
     }
-    setSelectedSource(source.id);
-    setNotice('Quelle hinzugefügt.');
+    if (options.open !== false) setSelectedSource(source.id);
+    if (!options.silent) setNotice('Quelle hinzugefügt.');
     return true;
   }
 
@@ -204,15 +207,31 @@ export default function App() {
   }
 
   async function handleYouTube(method: 'local' | 'supadata') {
-    if (!urlInput.trim()) return;
+    const { urls, invalid, repeats } = parseYouTubeLinks(urlInput);
+    if (!urls.length) { setNotice('Bitte mindestens einen gültigen YouTube-Video-Link eingeben.'); return; }
+    if (urls.length > 100) { setNotice('Bitte höchstens 100 unterschiedliche Video-Links pro Durchlauf eingeben.'); return; }
+    const notebookId = notebook.id;
+    const pending = urls.filter(url => !findDuplicate(libraryRef.current, createSource({ notebookId, kind: 'youtube', title: url, body: '', originalUrl: url })));
+    if (method === 'supadata' && pending.length && !window.confirm(`${pending.length} Video(s) über Supadata abrufen? Jeder Abruf kann Kosten verursachen.`)) return;
     setBusy(true);
-    try {
-      const result = method === 'local' ? await youtubeTranscriptLocal(urlInput.trim(), subtitleLanguage) : await youtubeTranscript(urlInput.trim(), supadataKey);
-      await addSource(createSource({ notebookId: notebook.id, kind: 'youtube', title: result.title, body: result.body, originalUrl: urlInput.trim(), author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }));
-      setUrlInput('');
-      setDialog(null);
-    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+    setYoutubeBatchErrors([]);
+    let imported = 0;
+    let skipped = urls.length - pending.length + repeats;
+    const errors = invalid.map(url => ({ url, message: 'Kein gültiger YouTube-Video-Link.' }));
+    for (const [index, url] of pending.entries()) {
+      setYoutubeBatchProgress(`Video ${index + 1} von ${pending.length} wird geladen …`);
+      try {
+        const result = method === 'local' ? await youtubeTranscriptLocal(url, subtitleLanguage) : await youtubeTranscript(url, supadataKey);
+        const added = await addSource(createSource({ notebookId, kind: 'youtube', title: result.title, body: result.body, originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }), { open: false, silent: true });
+        if (added) imported++; else skipped++;
+      } catch (error) { errors.push({ url, message: error instanceof Error ? error.message : String(error) }); }
+    }
+    setBusy(false);
+    setYoutubeBatchProgress('');
+    setYoutubeBatchErrors(errors);
+    setUrlInput(errors.map(item => item.url).join('\n'));
+    setNotice(`${imported} Video(s) hinzugefügt, ${skipped} doppelte oder bereits vorhandene übersprungen.${errors.length ? ` ${errors.length} Link(s) konnten nicht geladen werden.` : ''}`);
+    if (!errors.length) setDialog(null);
   }
 
   async function loadCatalog() {
@@ -293,7 +312,7 @@ export default function App() {
               if (!value) throw new Error('Geteilter Text ist leer.');
               if (/^https?:\/\/\S+$/i.test(value)) {
                 if (isYouTubeVideoUrl(value)) {
-                  await addSource(createSource({ notebookId: INBOX_ID, kind: 'youtube', title: `YouTube-Video ${new URL(value).searchParams.get('v') || new URL(value).pathname.split('/').filter(Boolean).at(-1)}`, body: value, originalUrl: value, warnings: ['Video-Link gespeichert. Für Untertitel im Quellen-Detail „Erneut lesen“ mit Supadata-Schlüssel verwenden.'], status: 'partial' }));
+                  await addSource(createSource({ notebookId: INBOX_ID, kind: 'youtube', title: `YouTube-Video ${new URL(value).searchParams.get('v') || new URL(value).pathname.split('/').filter(Boolean).at(-1)}`, body: value, originalUrl: value, warnings: ['Video-Link gespeichert. Für Untertitel im Quellen-Detail „Erneut lesen“ wählen. Auf Android geht das ohne API-Schlüssel.'], status: 'partial' }));
                 } else {
                   try {
                     const extracted = await extractUrl(value);
@@ -449,7 +468,7 @@ export default function App() {
     if (!item.originalUrl) return;
     setBusy(true);
     try {
-      const extracted = item.kind === 'youtube' ? item.provider === 'yt-dlp-local' && isNative ? await youtubeTranscriptLocal(item.originalUrl, item.language === 'en' ? 'en' : 'de') : await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
+      const extracted = item.kind === 'youtube' ? isNative && item.provider !== 'supadata-native' ? await youtubeTranscriptLocal(item.originalUrl, item.language === 'en' ? 'en' : 'de') : await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
       if (item.editedByUser) {
         const copy = createSource({ notebookId: item.notebookId, kind: extracted.kind, title: `${extracted.title} (Neu extrahiert)`, body: extracted.body, originalUrl: item.originalUrl, author: extracted.author, conflictOf: item.id, warnings: [...extracted.warnings, 'Manuell bearbeitete Fassung wurde nicht überschrieben.'], status: 'partial' });
         await commit(value => ({ ...value, sources: [...value.sources, copy] }));
@@ -461,6 +480,16 @@ export default function App() {
       }
     } catch (error) { setNotice(`Erneut verarbeiten fehlgeschlagen: ${String(error)}`); }
     finally { setBusy(false); }
+  }
+
+  async function cleanSource(item: Source) {
+    const cleaned = cleanTimestampedText(item.body);
+    if (cleaned === item.body) return;
+    if (!window.confirm('Überlappende Untertitel-Zeilen in dieser Quelle bereinigen? Der bisherige Text wird ersetzt. Wenn du ihn behalten möchtest, erstelle vorher eine Sicherung.')) return;
+    try {
+      await commit(value => ({ ...value, sources: value.sources.map(current => current.id === item.id ? { ...current, body: cleaned } : current) }));
+      setNotice('Überlappende Untertitel-Zeilen bereinigt.');
+    } catch (error) { setNotice(`Bereinigung fehlgeschlagen: ${String(error)}`); }
   }
 
   async function moveSource(item: Source, notebookId: string) {
@@ -515,10 +544,10 @@ export default function App() {
     {source && <div className="detail-backdrop" onClick={() => setSelectedSource(null)}><section className="detail-panel" onClick={event => event.stopPropagation()} aria-label="Quelle ansehen">
       <div className="detail-top"><span>QUELLENDETAIL</span><button className="icon-button" onClick={() => setSelectedSource(null)} aria-label="Schließen">×</button></div>
       <div className="detail-scroll"><div className="detail-kicker">{source.kind.toUpperCase()} · {localeDate(source.importedAt)}</div><h2>{source.title}</h2>{source.originalUrl && <a className="original-link" href={source.originalUrl} target="_blank" rel="noreferrer">Original öffnen ↗</a>}{source.warnings.map((warning, index) => <div className="warning" key={index}>⚠ {warning}</div>)}<div className="detail-metrics">{metrics(source.body).words} Wörter <span>·</span> ~{metrics(source.body).tokens} Token <span>·</span> {source.editedByUser ? 'Manuell bearbeitet' : 'Extrahiert'}</div>{editing ? <textarea className="editor" value={draft} onChange={event => setDraft(event.target.value)} aria-label="Quelleninhalt bearbeiten" /> : <pre className="body-preview">{source.body}</pre>}</div>
-      <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived && !item.deletedAt).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
+      <div className="detail-actions">{editing ? <><button className="button subtle" onClick={() => setEditing(false)}>Abbrechen</button><button className="button primary" onClick={() => void saveEdit(source)}>Speichern</button></> : <><button className="button danger" onClick={() => void deleteSource(source)}>Löschen</button><select className="move-select" aria-label="Quelle in Notebook verschieben" value={source.notebookId} onChange={event => void moveSource(source, event.target.value)}>{library.notebooks.filter(item => !item.archived && !item.deletedAt).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{source.originalUrl && <button className="button subtle" disabled={busy} onClick={() => void reprocessSource(source)}>Erneut lesen</button>}{source.kind === 'youtube' && !source.editedByUser && cleanTimestampedText(source.body) !== source.body && <button className="button subtle" disabled={busy} onClick={() => void cleanSource(source)}>Dopplungen bereinigen</button>}<button className="button subtle" onClick={() => startEdit(source)}>Bearbeiten</button><button className="button primary" onClick={() => navigator.clipboard.writeText(source.body).then(() => setNotice('Inhalt kopiert.')).catch(() => setNotice('Kopieren fehlgeschlagen.'))}>Inhalt kopieren</button></>}</div>
     </section></div>}
 
-    {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen'}</h2></div><button className="icon-button" onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
+    {dialog && <div className="modal-backdrop" onClick={() => !busy && setDialog(null)}><section className="modal" onClick={event => event.stopPropagation()} aria-label="Dialog"><div className="modal-head"><div><div className="eyebrow">{notebook?.title}</div><h2>{dialog === 'add' ? 'Quelle hinzufügen' : dialog === 'export' ? 'Kontext exportieren' : dialog === 'trash' ? 'Papierkorb' : dialog === 'manage' ? 'Notebook verwalten' : dialog === 'notebookActions' ? 'Notebook-Aktionen' : dialog === 'shares' ? 'Geteilte Eingänge' : 'Notebook erstellen'}</h2></div><button className="icon-button" disabled={busy} onClick={() => setDialog(null)} aria-label="Schließen">×</button></div>
       {dialog === 'notebookActions' && contextNotebook && <div className="modal-body"><p className="helper">{contextNotebook.title} · {library.sources.filter(item => item.notebookId === contextNotebook.id && !item.deletedAt).length} Quellen</p><div className="notebook-action-list"><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setDialog(null); }}>Öffnen</button><button className="button subtle" onClick={() => { setSelectedNotebook(contextNotebook.id); setNotebookName(contextNotebook.title); setDialog('manage'); }}>Umbenennen / archivieren</button><button className="button danger" onClick={() => void deleteNotebook(contextNotebook.id)}>In den Papierkorb</button></div><p className="helper">Zum Sortieren oder Löschen kannst du das Griffsymbol ⋮⋮ neben dem Notebook ziehen.</p></div>}
       {dialog === 'shares' && <div className="modal-body"><p className="helper">Diese Eingänge bleiben erhalten, bis der Import gelingt oder du sie ausdrücklich verwirfst. Spätere Eingänge werden trotzdem weiterverarbeitet.</p><div className="trash-list">{shareErrors.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>{item.message}</small></span><button className="button danger" onClick={() => void discardSharedItem(item.id)}>Verwerfen</button></div>)}</div><button className="button primary wide" onClick={() => setShareRetry(value => value + 1)}>Erneut versuchen</button></div>}
       {dialog === 'trash' && <div className="modal-body"><p className="helper">Notebooks und Quellen bleiben lokal erhalten, bis du sie wiederherstellst. Eine Sicherungs-ZIP enthält sie ebenfalls.</p>{deletedNotebooks.length + deletedSources.length === 0 ? <p className="helper">Der Papierkorb ist leer.</p> : <div className="trash-list">{deletedNotebooks.map(item => <div key={item.id}><span><strong>▤ {item.title}</strong><small>Notebook · {library.sources.filter(source => source.notebookId === item.id && !source.deletedAt).length} Quellen</small></span><button className="button subtle" onClick={() => void undeleteNotebook(item.id)}>Wiederherstellen</button></div>)}{deletedSources.map(item => <div key={item.id}><span><strong>{item.title}</strong><small>Quelle · {library.notebooks.find(book => book.id === item.notebookId)?.title || 'Unbekanntes Notebook'}</small></span><button className="button subtle" onClick={() => void restoreSource(item)}>Wiederherstellen</button></div>)}</div>}</div>}
@@ -526,18 +555,21 @@ export default function App() {
       {dialog === 'notebook' && <div className="modal-body"><label>NAME DES NOTEBOOKS<input autoFocus value={notebookName} placeholder="z. B. Context Engineering" onChange={event => setNotebookName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && notebookName.trim()) { const item = createNotebook(notebookName); void commit(value => ({ ...value, notebooks: [...value.notebooks, item] })); setSelectedNotebook(item.id); setNotebookName(''); setDialog(null); } }} /></label><button className="button primary wide" disabled={!notebookName.trim()} onClick={() => { const item = createNotebook(notebookName); void commit(value => ({ ...value, notebooks: [...value.notebooks, item] })); setSelectedNotebook(item.id); setNotebookName(''); setDialog(null); }}>Notebook erstellen</button></div>}
       {dialog === 'add' && <div className="modal-body">
         <div className="tabs">
-          <button className={addTab === 'url' ? 'active' : ''} onClick={() => setAddTab('url')}>Website / URL</button>
-          <button className={addTab === 'file' ? 'active' : ''} onClick={() => setAddTab('file')}>Datei</button>
-          <button className={addTab === 'text' ? 'active' : ''} onClick={() => setAddTab('text')}>Text</button>
-          <button className={addTab === 'youtube' ? 'active' : ''} onClick={() => setAddTab('youtube')}>YouTube</button>
-          <button className={addTab === 'search' ? 'active' : ''} onClick={() => setAddTab('search')}>Websuche</button>
+          <button className={addTab === 'url' ? 'active' : ''} disabled={busy} onClick={() => setAddTab('url')}>Website / URL</button>
+          <button className={addTab === 'file' ? 'active' : ''} disabled={busy} onClick={() => setAddTab('file')}>Datei</button>
+          <button className={addTab === 'text' ? 'active' : ''} disabled={busy} onClick={() => setAddTab('text')}>Text</button>
+          <button className={addTab === 'youtube' ? 'active' : ''} disabled={busy} onClick={() => setAddTab('youtube')}>YouTube</button>
+          <button className={addTab === 'search' ? 'active' : ''} disabled={busy} onClick={() => setAddTab('search')}>Websuche</button>
         </div>
         {addTab === 'url' && <><p className="helper">Eine oder mehrere URLs eingeben. Jede URL wird als eigene Quelle gespeichert.</p><textarea rows={5} placeholder={'https://example.com/artikel\nhttps://example.org/guide'} value={urlInput} onChange={event => setUrlInput(event.target.value)} /><div className="modal-actions">{Boolean(globalThis.chrome?.runtime?.sendMessage) && <button className="button subtle" onClick={handleCurrentTab} disabled={busy}>Vorherigen Tab übernehmen</button>}<button className="button primary" onClick={handleUrls} disabled={busy || !urlInput.trim()}>{busy ? 'Lese Quellen …' : 'URLs hinzufügen'}</button></div></>}
         {addTab === 'file' && <><p className="helper">TXT, Markdown, HTML, PDF, DOCX, EPUB, CSV sowie Untertiteldateien (VTT/SRT) werden lokal verarbeitet.</p><input ref={fileInput} type="file" accept=".txt,.md,.markdown,.html,.htm,.pdf,.docx,.epub,.csv,.vtt,.srt" multiple onChange={event => void handleFiles(event.target.files)} /><button className="button primary wide" disabled={busy} onClick={() => fileInput.current?.click()}>{busy ? 'Verarbeite Dateien …' : 'Dateien auswählen'}</button></>}
         {addTab === 'text' && <><label>TITEL<input placeholder="Titel deiner Quelle" value={textTitle} onChange={event => setTextTitle(event.target.value)} /></label><label>INHALT<textarea rows={7} placeholder="Text hier einfügen …" value={textInput} onChange={event => setTextInput(event.target.value)} /></label><button className="button primary wide" onClick={() => void handleText()}>Text hinzufügen</button></>}
         {addTab === 'youtube' && <>
-          <label>VIDEO-URL<input placeholder="https://www.youtube.com/watch?v=…" value={urlInput} onChange={event => setUrlInput(event.target.value)} /></label>
-          {isNative && <><p className="helper">Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Es wird nur eine vorhandene Untertitelsprache geladen, kein Video und keine KI-Transkription. YouTube kann Abrufe blockieren oder begrenzen.</p><label>UNTERTITELSPRACHE<select value={subtitleLanguage} onChange={event => setSubtitleLanguage(event.target.value as 'de' | 'en')}><option value="de">Deutsch</option><option value="en">Englisch</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube('local')}>{busy ? 'Lade Untertitel …' : 'Untertitel ohne API-Schlüssel laden'}</button></>}
+          <label>VIDEO-URLS (EINE PRO ZEILE)<textarea rows={5} placeholder={'https://www.youtube.com/watch?v=…\nhttps://youtu.be/…'} value={urlInput} disabled={busy} onChange={event => { setUrlInput(event.target.value); setYoutubeBatchErrors([]); }} /></label>
+          <p className="helper">Du kannst mehrere Video-Links einfügen. Sie werden nacheinander geladen; doppelte und bereits vorhandene Videos werden übersprungen. Maximal 100 unterschiedliche Videos pro Durchlauf.</p>
+          {youtubeBatchProgress && <p className="helper" role="status">{youtubeBatchProgress}</p>}
+          {youtubeBatchErrors.length > 0 && <div className="warning" role="alert"><strong>{youtubeBatchErrors.length} Link(s) nicht geladen; sie bleiben oben für einen erneuten Versuch:</strong>{youtubeBatchErrors.slice(0, 10).map((item, index) => <div key={`${item.url}-${index}`}>{item.url}: {item.message}</div>)}{youtubeBatchErrors.length > 10 && <div>… und {youtubeBatchErrors.length - 10} weitere.</div>}</div>}
+          {isNative && <><p className="helper">Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Es wird nur eine vorhandene Untertitelsprache geladen, kein Video und keine KI-Transkription. YouTube kann Abrufe blockieren oder begrenzen.</p><label>UNTERTITELSPRACHE<select value={subtitleLanguage} disabled={busy} onChange={event => setSubtitleLanguage(event.target.value as 'de' | 'en')}><option value="de">Deutsch</option><option value="en">Englisch</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube('local')}>{busy ? 'Lade Untertitel …' : 'Untertitel ohne API-Schlüssel laden'}</button></>}
           {!isNative && <p className="helper">Im Browser kannst du Untertiteldateien (VTT/SRT) ohne Schlüssel im Tab „Datei“ importieren. Der direkte yt-dlp-Abruf ist nur in der Android-App möglich.</p>}
           <div className="backup-section"><h3>Optional: Supadata</h3><p>Nur wenn du den folgenden Schlüssel eingibst und „Über Supadata laden“ wählst, wird der Link an diesen externen Dienst übertragen. Abrufe können Kosten verursachen. Der Schlüssel bleibt nur im Arbeitsspeicher.</p>
           <label>SUPADATA API-SCHLÜSSEL<input type="password" autoComplete="off" value={supadataKey} onChange={event => setSupadataKey(event.target.value)} /></label>

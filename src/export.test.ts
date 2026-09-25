@@ -42,10 +42,21 @@ describe('portable exports', () => {
   it('packages individual source files with an OKF root index', async () => {
     const zip = await JSZip.loadAsync(await bundleZip(notebook, [source]));
     const index = await zip.file('contexter/index.md')?.async('string');
-    const article = await zip.file(`contexter/sources/${source.id}.md`)?.async('string');
+    const article = await zip.file('contexter/sources/Artikel „Daten“.md')?.async('string');
+    const guide = await zip.file('contexter/AGENTS.md')?.async('string');
     expect(index).toContain('okf_version: "0.2"');
-    expect(index).toContain(`sources/${source.id}.md`);
+    expect(index).toContain('sources/Artikel%20%E2%80%9EDaten%E2%80%9C.md');
     expect(article).toContain('https://example.com/a?x=1');
+    expect(article).toContain('# Artikel: „Daten“');
+    expect(YAML.parse(guide!.split('---')[1]).type).toBe('Playbook');
+  });
+
+  it('uses distinct readable filenames for repeated or unsafe titles', async () => {
+    const first = createSource({ notebookId: notebook.id, kind: 'text', title: 'Notes / Test', body: 'One' });
+    const second = createSource({ notebookId: notebook.id, kind: 'text', title: 'Notes : Test', body: 'Two' });
+    const zip = await JSZip.loadAsync(await bundleZip(notebook, [first, second]));
+    expect(zip.file('contexter/sources/Notes Test.md')).not.toBeNull();
+    expect(zip.file('contexter/sources/Notes Test (2).md')).not.toBeNull();
   });
 });
 

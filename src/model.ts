@@ -62,6 +62,16 @@ export function restoreNotebook(library: Library, id: string): Library {
   return { ...library, notebooks: library.notebooks.map(item => item.id === id ? { ...item, deletedAt: undefined, archived: false } : item) };
 }
 
+export function emptyTrash(library: Library): Library {
+  const deletedNotebooks = new Set(library.notebooks.filter(item => item.deletedAt).map(item => item.id));
+  if (!deletedNotebooks.size && !library.sources.some(item => item.deletedAt)) return library;
+  return {
+    ...library,
+    notebooks: library.notebooks.filter(item => !item.deletedAt),
+    sources: library.sources.filter(item => !item.deletedAt && !deletedNotebooks.has(item.notebookId)),
+  };
+}
+
 export function reorderNotebook(library: Library, fromId: string, beforeId: string): Library {
   if (fromId === INBOX_ID || beforeId === INBOX_ID || fromId === beforeId) return library;
   const visible = library.notebooks.filter(item => item.id !== INBOX_ID && !item.deletedAt && !item.archived);

@@ -1,6 +1,6 @@
 # Implementierungsstand und geänderte Entscheidung
 
-Stand: 25. September 2026 · 0.9.0-test.6
+Stand: 25. September 2026 · 0.9.0-test.7
 
 Die Dokumente 01–06 sind die historische Planungsbaseline vor dem Coding. Ihre Aussagen „noch nicht implementiert“ und die dortige automatische Synchronisationsarchitektur beschreiben nicht mehr den aktuellen Stand. Die laufende Implementierung ist im Root-README beschrieben.
 
@@ -11,6 +11,10 @@ Die spätere Entscheidung des Nutzers für 1.0 lautet: lokal speichern, Dateien 
 Gemeinsame React/TypeScript-Oberfläche für Android und Chromium-Erweiterung; IndexedDB-Bibliothek; lokale Quellverwaltung und Papierkorb für Quellen und Notebooks; Notebook-Langdruck, Ziehen zum Sortieren und auf den Papierkorb; TXT/MD/HTML/PDF/DOCX/EPUB/CSV/VTT/SRT-Adapter; Web- und Erweiterungs-Tab-Erfassung; direkter Android-`yt-dlp`-Abruf von Untertiteln ohne API-Schlüssel, auch für mehrere eingefügte Links; Originalsprache als Standard; YouTube-Transkripte ohne Zeitstempel mit verbesserter Bereinigung rollender Untertitel; lokaler Korrekturknopf für ältere Quellen; Erkennung von YouTube-Links in der Zwischenablage nach Tippen auf „Quelle hinzufügen“; optionaler YouTube-Cookie-Datei-Import für die laufende Sitzung; optionale Supadata- und Brave-Adapter; MD/TXT/ZIP-Export; vollständige Sicherung, Import als neues Notebook und Merge; Android-Share-Target mit persistierter Eingangsqueue und Öffnen-mit-Registrierung für ZIP. Kurzmeldungen schließen nach drei Sekunden automatisch. Unit- und Contract-Tests sowie Web-/Extension-/Android-Build laufen. Der Android-Emulator bestätigte den Empfang von Text und einer über `content://` freigegebenen CSV, die Quittierung nach Verarbeitung, den Abruf englischer YouTube-Untertitel einschließlich Originalsprache, den Notebook-Papierkorb und das Öffnen einer Contexter-Sicherungs-ZIP über „Öffnen mit → Contexter“ mit anschließender Anlage eines neuen Notebooks. Ein Nutzerbericht bestätigt einen erfolgreichen YouTube-Abruf auf einem echten Android-Gerät; dabei zeigte ein Video überlappende Zeilen, ein anderes nicht. Ein weiterer Nutzerbericht bestätigte, dass Abschalten des VPN die YouTube-Bot-Sperre umging.
 
 ## Vor einer öffentlichen 1.0 noch zu belegen
+
+Der Notebook-ZIP-Export ist ein OKF-orientierter **Quellen-Vault**: `index.md` trägt `okf_version: "0.2"`; jede Quelldatei besitzt YAML-Frontmatter mit `type: Reference`, Titel, Herkunft und Contexter-ID. Ab Test.7 tragen die Dateien lesbare, titelbasierte Namen und sichtbare Markdown-Überschriften, damit Obsidian nicht nur UUIDs anzeigt. Gleichnamige Quellen erhalten einen nummerierten Dateinamen. `AGENTS.md` erklärt, wie ein Agent daraus neue, belegte Wissensnotizen erstellt. Diese Kuratierung und inhaltliche Prüfung laufen **nicht automatisch**. Die vollständige Bibliothekssicherung bleibt ein anderes ZIP-Format und kann in Contexter wieder importiert werden; das OKF-Quellen-ZIP dient dem Lesen und Weiterverarbeiten.
+
+Test.7 ergänzt außerdem „Papierkorb endgültig leeren“ mit Bestätigung sowie Einstellungen (Zahnrad rechts oben) mit Deutsch/Englisch-Umschaltung. Die Spracheinstellung gilt nur auf dem jeweiligen Gerät und übersetzt keine Quelleninhalte.
 
 - Komplette Teilen-/Export-/Wiederherstellungsrunde auf einem echten Android-Gerät. Der YouTube-Abruf wurde dort bereits erprobt; die übrigen Flüsse wurden bislang nur im Emulator geprüft.
 - Inhaltstreue der Parser an schwierigeren PDF-, DOCX-, EPUB- und Webseiten-Beispielen. OCR für reine Bild-PDFs ist nicht enthalten.

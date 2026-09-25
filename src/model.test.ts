@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSource, emptyLibrary, INBOX_ID, reorderNotebook, restoreNotebook, trashNotebook } from './model';
+import { createSource, emptyLibrary, emptyTrash, INBOX_ID, reorderNotebook, restoreNotebook, trashNotebook } from './model';
 
 describe('notebook lifecycle', () => {
   it('moves a notebook with its sources to trash and restores both', () => {
@@ -26,5 +26,19 @@ describe('notebook lifecycle', () => {
     expect(reorderNotebook(library, 'c', 'a').notebooks.map(item => item.id)).toEqual(['inbox', 'c', 'hidden', 'a', 'b']);
     expect(reorderNotebook(library, 'c', INBOX_ID)).toBe(library);
     expect(reorderNotebook(library, 'hidden', 'a')).toBe(library);
+  });
+
+  it('permanently removes trashed notebooks with their sources and separately trashed sources', () => {
+    const library = emptyLibrary();
+    library.notebooks.push({ id: 'deleted', title: 'Deleted', createdAt: '', deletedAt: '2026-09-25' });
+    library.sources.push(
+      createSource({ notebookId: INBOX_ID, kind: 'text', title: 'Keep', body: 'A' }),
+      { ...createSource({ notebookId: INBOX_ID, kind: 'text', title: 'Remove', body: 'B' }), deletedAt: '2026-09-25' },
+      createSource({ notebookId: 'deleted', kind: 'text', title: 'Inside notebook', body: 'C' }),
+    );
+    const result = emptyTrash(library);
+    expect(result.notebooks.map(item => item.id)).toEqual([INBOX_ID]);
+    expect(result.sources.map(item => item.title)).toEqual(['Keep']);
+    expect(emptyTrash(result)).toBe(result);
   });
 });

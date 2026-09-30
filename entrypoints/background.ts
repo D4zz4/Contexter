@@ -1,5 +1,6 @@
 import { defineBackground } from 'wxt/utils/define-background';
 import { fetchBrowserYouTubeTranscript } from '../src/youtube-browser';
+import { fetchBrowserCatalogPage } from '../src/youtube-catalog';
 
 export default defineBackground(() => {
   chrome.action.onClicked.addListener(tab => {
@@ -15,7 +16,13 @@ export default defineBackground(() => {
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
     if (!message || typeof message !== 'object') return;
-    const request = message as { type?: string; url?: string; language?: 'original' | 'de' | 'en' };
+    const request = message as { type?: string; url?: string; language?: 'original' | 'de' | 'en'; continuation?: string; clientVersion?: string };
+    if (request.type === 'contexter:youtube-catalog-page') {
+      void fetchBrowserCatalogPage(request.url || '', request.continuation, request.clientVersion)
+        .then(sendResponse)
+        .catch(error => sendResponse({ error: error instanceof Error ? error.message : String(error) }));
+      return true;
+    }
     if (request.type === 'contexter:youtube-transcript') {
       void fetchBrowserYouTubeTranscript(request.url || '', request.language || 'original')
         .then(sendResponse)

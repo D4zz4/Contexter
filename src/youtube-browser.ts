@@ -49,7 +49,7 @@ function balancedObject(source: string, start: number): string | null {
   return null;
 }
 
-function objectsAfterMarker(html: string, marker: string): unknown[] {
+export function objectsAfterMarker(html: string, marker: string): unknown[] {
   const values: unknown[] = [];
   let offset = 0;
   while (offset < html.length) {
@@ -83,7 +83,7 @@ function collectNamed(value: unknown, name: string, output: unknown[]): void {
   }
 }
 
-function youtubeClientVersion(html: string): string {
+export function youtubeClientVersion(html: string): string {
   const configurations = objectsAfterMarker(html, 'ytcfg.set(') as Array<Record<string, unknown>>;
   const combined = Object.assign({}, ...configurations);
   return String(combined.INNERTUBE_CONTEXT_CLIENT_VERSION || '2.20260729.00.00');

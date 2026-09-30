@@ -6,8 +6,9 @@ import { loadLibrary, saveLibrary } from './storage';
 import { isNative, shareInbox, sharedFile, sharedText } from './share-inbox';
 import { backupLibrary, importLibraryAsNotebook, mergeLibraries, readLibraryBackup } from './backup';
 import { braveSearch, isYouTubeVideoUrl, parseYouTubeLinks, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
-import { youtubeTranscriptLocal } from './ytdlp';
+import { youtubeCatalogLocal, youtubeTranscriptLocal } from './ytdlp';
 import { requestBrowserYouTubeAccess, youtubeTranscriptBrowser } from './youtube-browser';
+import { catalogSections, catalogUrl as canonicalCatalogUrl, requestBrowserCatalogAccess, youtubeCatalogBrowser, type CatalogType } from './youtube-catalog';
 import { cleanTimestampedText } from './subtitles';
 import { prepareYouTubeCookies } from './youtube-cookies';
 import { loadLanguage, loadTheme, translateUi, type Language, type Theme } from './i18n';
@@ -19,11 +20,11 @@ type AddTab = 'url' | 'text' | 'file' | 'youtube' | 'search';
 
 const localeDate = (value: string | undefined, language: Language) => value ? new Date(value).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 const originLabel = (value?: string) => { try { return value ? new URL(value).hostname : ''; } catch { return 'Ungültige URL'; } };
-function loadCatalogDraft(): { url: string; type: 'video' | 'short' | 'live'; ids: string[]; selected: string[]; limit: number } {
+function loadCatalogDraft(): { url: string; type: CatalogType; ids: string[]; selected: string[]; limit: number } {
   try {
     const value = JSON.parse(localStorage.getItem('contexter-catalog-draft') || '{}');
-    return { url: typeof value.url === 'string' ? value.url : '', type: ['video', 'short', 'live'].includes(value.type) ? value.type : 'video', ids: Array.isArray(value.ids) ? value.ids.filter((id: unknown) => typeof id === 'string') : [], selected: Array.isArray(value.selected) ? value.selected.filter((id: unknown) => typeof id === 'string') : [], limit: Number.isInteger(value.limit) && value.limit >= 1 && value.limit <= 5000 ? value.limit : 20 };
-  } catch { return { url: '', type: 'video', ids: [], selected: [], limit: 20 }; }
+    return { url: typeof value.url === 'string' ? value.url : '', type: ['all', 'video', 'short', 'live'].includes(value.type) ? value.type : 'all', ids: Array.isArray(value.ids) ? value.ids.filter((id: unknown) => typeof id === 'string') : [], selected: Array.isArray(value.selected) ? value.selected.filter((id: unknown) => typeof id === 'string') : [], limit: Number.isInteger(value.limit) && value.limit >= 1 && value.limit <= 5000 ? value.limit : 5000 };
+  } catch { return { url: '', type: 'all', ids: [], selected: [], limit: 5000 }; }
 }
 
 export default function App() {
@@ -68,11 +69,15 @@ export default function App() {
   const [shareErrors, setShareErrors] = useState<Array<{ id: string; title: string; message: string }>>([]);
   const [shareRetry, setShareRetry] = useState(0);
   const [catalogUrl, setCatalogUrl] = useState(catalogDraft.url);
-  const [catalogType, setCatalogType] = useState<'video' | 'short' | 'live'>(catalogDraft.type);
+  const [catalogType, setCatalogType] = useState<CatalogType>(catalogDraft.type);
   const [catalogLimit, setCatalogLimit] = useState(catalogDraft.limit);
   const [catalogIds, setCatalogIds] = useState<string[]>(catalogDraft.ids);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<string[]>(catalogDraft.selected);
   const [visibleCatalogCount, setVisibleCatalogCount] = useState(100);
+  const [catalogProgress, setCatalogProgress] = useState('');
+  const [catalogErrors, setCatalogErrors] = useState<Array<{ id: string; message: string }>>([]);
+  const [catalogImporting, setCatalogImporting] = useState(false);
+  const catalogCancelRequested = useRef(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [notebookFolder, setNotebookFolder] = useState('');
@@ -342,37 +347,76 @@ export default function App() {
     if (!errors.length) setDialog(null);
   }
 
-  async function loadCatalog() {
+  async function loadCatalog(method: 'direct' | 'supadata') {
+    const sections = catalogSections(catalogType);
+    let playlist: boolean;
+    try { playlist = canonicalCatalogUrl(catalogUrl, 'video').includes('/playlist?'); }
+    catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
+    if (method === 'direct' && !isNative) {
+      try { await requestBrowserCatalogAccess(); }
+      catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
+    }
     setBusy(true);
+    setCatalogErrors([]);
+    catalogCancelRequested.current = false;
     try {
-      const ids = await youtubeCatalog(catalogUrl, supadataKey, catalogLimit, catalogType);
-      setCatalogIds(ids);
-      setSelectedCatalogIds([]);
+      const ids = new Set<string>();
+      for (const section of playlist ? sections.slice(0, 1) : sections) {
+        if (catalogCancelRequested.current) break;
+        setCatalogProgress(message(`Lese ${section === 'video' ? 'Videos' : section === 'short' ? 'Shorts' : 'Livestreams'} … ${ids.size} gefunden`, `Reading ${section === 'video' ? 'videos' : section === 'short' ? 'Shorts' : 'live streams'}… ${ids.size} found`));
+        const next = method === 'supadata'
+          ? await youtubeCatalog(catalogUrl, supadataKey, catalogLimit, section)
+          : isNative
+            ? await youtubeCatalogLocal(canonicalCatalogUrl(catalogUrl, section), catalogLimit, youtubeCookies || undefined)
+            : await youtubeCatalogBrowser(catalogUrl, catalogLimit, section, count => setCatalogProgress(message(`${count + ids.size} Videos gefunden …`, `${count + ids.size} videos found…`)), () => catalogCancelRequested.current);
+        for (const id of next) ids.add(id);
+        setCatalogIds([...ids]);
+        setSelectedCatalogIds([]);
+      }
       setVisibleCatalogCount(100);
-      if (!ids.length) setNotice(t('Keine passenden Videos gefunden.'));
+      if (!ids.size) setNotice(t('Keine passenden Videos gefunden.'));
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setCatalogProgress(''); }
   }
 
-  async function importCatalogSelection() {
-    if (!selectedCatalogIds.length) return;
-    if (!window.confirm(message(`${selectedCatalogIds.length} Videos über Supadata abrufen? Jeder Abruf kann Kosten verursachen.`, `Fetch ${selectedCatalogIds.length} videos via Supadata? Each request may incur costs.`))) return;
+  async function importCatalogSelection(method: 'direct' | 'supadata') {
+    const ids = [...selectedCatalogIds];
+    if (!ids.length) return;
+    if (method === 'supadata' && !window.confirm(message(`${ids.length} Videos über Supadata abrufen? Jeder Abruf kann Kosten verursachen.`, `Fetch ${ids.length} videos via Supadata? Each request may incur costs.`))) return;
+    if (method === 'direct' && ids.length > 100 && !window.confirm(message(`${ids.length} Untertitel abrufen? Das kann lange dauern und YouTube kann Abrufe begrenzen. Du kannst jederzeit stoppen.`, `Fetch ${ids.length} transcripts? This may take a long time and YouTube may rate-limit requests. You can stop at any time.`))) return;
+    if (method === 'direct' && !isNative) {
+      try { await requestBrowserYouTubeAccess(); }
+      catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
+    }
     setBusy(true);
+    setCatalogImporting(true);
+    setCatalogErrors([]);
+    catalogCancelRequested.current = false;
     let imported = 0;
     let skipped = 0;
-    const errors: string[] = [];
-    for (const id of selectedCatalogIds) {
+    const errors: Array<{ id: string; message: string }> = [];
+    const notebookId = notebook.id;
+    for (const [index, id] of ids.entries()) {
+      if (catalogCancelRequested.current) break;
+      setCatalogProgress(message(`Video ${index + 1} von ${ids.length}: ${imported} importiert, ${errors.length} fehlgeschlagen …`, `Video ${index + 1} of ${ids.length}: ${imported} imported, ${errors.length} failed…`));
       const url = `https://www.youtube.com/watch?v=${id}`;
-      if (findDuplicate(libraryRef.current, createSource({ notebookId: notebook.id, kind: 'youtube', title: id, body: '', originalUrl: url }))) { skipped++; setSelectedCatalogIds(current => current.filter(item => item !== id)); continue; }
-      try {
-        const result = await youtubeTranscript(url, supadataKey);
-        if (await addSource(createSource({ notebookId: notebook.id, kind: 'youtube', title: result.title, body: cleanTimestampedText(result.body, true), originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }))) imported++;
+      if (findDuplicate(libraryRef.current, createSource({ notebookId, kind: 'youtube', title: id, body: '', originalUrl: url }))) {
+        skipped++;
         setSelectedCatalogIds(current => current.filter(item => item !== id));
-      } catch (error) { errors.push(`${id}: ${String(error)}`); }
+        continue;
+      }
+      try {
+        const result = method === 'supadata' ? await youtubeTranscript(url, supadataKey) : isNative ? await youtubeTranscriptLocal(url, subtitleLanguage, youtubeCookies || undefined) : await youtubeTranscriptBrowser(url, subtitleLanguage);
+        const added = await addSource(createSource({ notebookId, kind: 'youtube', title: result.title, body: cleanTimestampedText(result.body, true), originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }), { open: false, silent: true });
+        if (added) imported++; else skipped++;
+        setSelectedCatalogIds(current => current.filter(item => item !== id));
+      } catch (error) { errors.push({ id, message: error instanceof Error ? error.message : String(error) }); }
     }
     setBusy(false);
-    setNotice(message(`${imported} Video(s) hinzugefügt, ${skipped} bereits vorhanden.`, `${imported} video(s) added, ${skipped} already present.`) + (errors.length ? message(` Fehler: ${errors.join(' | ')}`, ` Errors: ${errors.join(' | ')}`) : ''));
-    if (imported) setDialog(null);
+    setCatalogImporting(false);
+    setCatalogProgress('');
+    setCatalogErrors(errors);
+    setNotice(message(`${imported} Video(s) importiert, ${skipped} bereits vorhanden.`, `${imported} video(s) imported, ${skipped} already present.`) + (errors.length ? message(` ${errors.length} fehlgeschlagen; Auswahl für erneuten Versuch behalten.`, ` ${errors.length} failed; selection kept for retry.`) : ''));
   }
 
   async function handleSearch() {
@@ -776,12 +820,15 @@ export default function App() {
           <div className="backup-section"><h3>{t("Optional: Supadata")}</h3><p>{t("Nur wenn du den folgenden Schlüssel eingibst und „Über Supadata laden“ wählst, wird der Link an diesen externen Dienst übertragen. Abrufe können Kosten verursachen. Der Schlüssel bleibt nur im Arbeitsspeicher.")}</p>
           <label>{t("SUPADATA API-SCHLÜSSEL")}<input type="password" autoComplete="off" value={supadataKey} onChange={event => setSupadataKey(event.target.value)} /></label>
           <button className="button subtle wide" disabled={busy || !urlInput.trim() || !supadataKey.trim()} onClick={() => void handleYouTube('supadata')}>{t("Über Supadata laden")}</button></div>
-          <div className="backup-section"><h3>{t("Kanal oder Playlist")}</h3><p>{t("Die Liste und deine Auswahl bleiben lokal gespeichert. Bereits importierte Videos werden vor kostenpflichtigen Abrufen übersprungen.")}</p>
-            <label>{t("KANAL- ODER PLAYLIST-URL")}<input placeholder={t("https://www.youtube.com/playlist?list=…")} value={catalogUrl} onChange={event => setCatalogUrl(event.target.value)} /></label>
-            <label>{t("MAXIMAL ANZEIGEN (1–5000)")}<input type="number" min={1} max={5000} value={catalogLimit} onChange={event => setCatalogLimit(Math.max(1, Math.min(5000, Number(event.target.value) || 1)))} /></label>
-            <label>{t("KANAL-TYP")}<select value={catalogType} onChange={event => setCatalogType(event.target.value as 'video' | 'short' | 'live')}><option value="video">{t("Normale Videos")}</option><option value="short">{t("Shorts")}</option><option value="live">{t("Live-Videos")}</option></select></label>
-            <button className="button subtle wide" disabled={busy || !catalogUrl.trim() || !supadataKey.trim()} onClick={() => void loadCatalog()}>{t("Video-Liste laden")}</button>
-            {catalogIds.length > 0 && <div className="catalog-list"><p className="helper">{catalogIds.length}{t(" Video-IDs gefunden")}{catalogIds.length >= catalogLimit ? t('; das gewählte Limit ist erreicht, weitere Videos sind möglich') : ''}.</p><div className="modal-actions"><button className="button subtle" onClick={() => setSelectedCatalogIds(catalogIds)}>{t("Alle auswählen")}</button><button className="button subtle" onClick={() => setSelectedCatalogIds([])}>{t("Auswahl aufheben")}</button></div>{catalogIds.slice(0, visibleCatalogCount).map(id => <label key={id}><input type="checkbox" checked={selectedCatalogIds.includes(id)} onChange={event => setSelectedCatalogIds(current => event.target.checked ? [...current, id] : current.filter(item => item !== id))} /><span>{t("youtube.com/watch?v=")}{id}</span></label>)}{catalogIds.length > visibleCatalogCount && <button className="button subtle wide" onClick={() => setVisibleCatalogCount(count => count + 100)}>{t("Weitere 100 anzeigen")}</button>}<button className="button primary wide" disabled={busy || !selectedCatalogIds.length || !supadataKey.trim()} onClick={() => void importCatalogSelection()}>{selectedCatalogIds.length}{t(" ausgewählte Videos importieren")}</button></div>}
+          <div className="backup-section"><h3>{t("Kanal oder Playlist")}</h3><p>{t("Kanal, @Handle oder Playlist einfügen. Die Videoliste wird ohne API-Schlüssel geladen; deine Auswahl bleibt lokal gespeichert. Der Untertitelimport kann je nach Kanal lange dauern oder von YouTube begrenzt werden.")}</p>
+            <label>{t("KANAL- ODER PLAYLIST-URL")}<input placeholder="https://www.youtube.com/@kanal/videos" value={catalogUrl} disabled={busy} onChange={event => { setCatalogUrl(event.target.value); setCatalogIds([]); setSelectedCatalogIds([]); }} /></label>
+            <label>{t("MAXIMAL PRO BEREICH (1–5000)")}<input type="number" min={1} max={5000} value={catalogLimit} disabled={busy} onChange={event => setCatalogLimit(Math.max(1, Math.min(5000, Number(event.target.value) || 1)))} /></label>
+            <label>{t("KANAL-TYP")}<select value={catalogType} disabled={busy} onChange={event => { setCatalogType(event.target.value as CatalogType); setCatalogIds([]); setSelectedCatalogIds([]); }}><option value="all">{t("Alle: Videos, Shorts und Livestreams")}</option><option value="video">{t("Normale Videos")}</option><option value="short">{t("Shorts")}</option><option value="live">{t("Live-Videos")}</option></select></label>
+            <button className="button subtle wide" disabled={busy || !catalogUrl.trim()} onClick={() => void loadCatalog('direct')}>{t("Videoliste ohne API-Schlüssel laden")}</button>
+            {supadataKey.trim() && <button className="button subtle wide" disabled={busy || !catalogUrl.trim()} onClick={() => void loadCatalog('supadata')}>{t("Alternativ: Liste über Supadata laden")}</button>}
+            {catalogProgress && <p className="helper" role="status">{catalogProgress}</p>}
+            {busy && catalogProgress && <button className="button subtle wide" onClick={() => { catalogCancelRequested.current = true; setCatalogProgress(t('Stoppe nach dem aktuellen Abruf …')); }}>{catalogImporting ? t('Import stoppen') : t('Suche stoppen')}</button>}
+            {catalogIds.length > 0 && <div className="catalog-list"><p className="helper">{catalogIds.length}{t(" Video-IDs gefunden")}{catalogIds.length >= catalogLimit ? t('; das gewählte Limit pro Bereich kann erreicht sein') : ''}. {t('Import in das aktuell geöffnete Notebook.')}</p><div className="modal-actions"><button className="button subtle" disabled={busy} onClick={() => setSelectedCatalogIds(catalogIds)}>{t("Alle auswählen")}</button><button className="button subtle" disabled={busy} onClick={() => setSelectedCatalogIds([])}>{t("Auswahl aufheben")}</button></div>{catalogIds.slice(0, visibleCatalogCount).map(id => <label key={id}><input type="checkbox" disabled={busy} checked={selectedCatalogIds.includes(id)} onChange={event => setSelectedCatalogIds(current => event.target.checked ? [...current, id] : current.filter(item => item !== id))} /><span>{t("youtube.com/watch?v=")}{id}</span></label>)}{catalogIds.length > visibleCatalogCount && <button className="button subtle wide" disabled={busy} onClick={() => setVisibleCatalogCount(count => count + 100)}>{t("Weitere 100 anzeigen")}</button>}<button className="button primary wide" disabled={busy || !selectedCatalogIds.length} onClick={() => void importCatalogSelection('direct')}>{selectedCatalogIds.length}{t(" ausgewählte Videos ohne API-Schlüssel importieren")}</button>{supadataKey.trim() && <button className="button subtle wide" disabled={busy || !selectedCatalogIds.length} onClick={() => void importCatalogSelection('supadata')}>{t('Auswahl stattdessen über Supadata importieren')}</button>}{catalogErrors.length > 0 && <div className="warning" role="alert"><strong>{catalogErrors.length}{t(' Video(s) fehlgeschlagen; sie bleiben ausgewählt:')}</strong>{catalogErrors.slice(0, 10).map(item => <div key={item.id}><a href={`https://www.youtube.com/watch?v=${item.id}`} target="_blank" rel="noreferrer">{item.id}</a>: {item.message}</div>)}{catalogErrors.length > 10 && <div>… {catalogErrors.length - 10} {t('weitere')}</div>}</div>}</div>}
           </div>
         </>}
         {addTab === 'search' && <><p className="helper">{t("Optionaler externer Dienst: Erst mit Klick auf „Suchen“ wird deine Anfrage an Brave Search gesendet. Kosten können entstehen. Ergebnisse werden erst durch deinen Klick importiert. Der Schlüssel bleibt nur im Arbeitsspeicher.")}</p><label>{t("SUCHBEGRIFF")}<input placeholder={t("Wonach suchst du?")} value={discoveryQuery} onChange={event => setDiscoveryQuery(event.target.value)} /></label><label>{t("BRAVE SEARCH API-SCHLÜSSEL")}<input type="password" autoComplete="off" value={braveKey} onChange={event => setBraveKey(event.target.value)} /></label><button className="button primary wide" disabled={busy || !discoveryQuery.trim() || !braveKey.trim()} onClick={() => void handleSearch()}>{busy ? t('Suche …') : t('Suchen')}</button><div className="discovery-results">{searchResults.map(result => <div className="discovery-result" key={result.url}><strong>{result.title}</strong><small>{result.url}</small><p>{result.description}</p><button className="button subtle" disabled={busy} onClick={() => void importSearchResult(result)}>{t("Importieren")}</button></div>)}</div></>}

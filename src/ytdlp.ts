@@ -5,9 +5,18 @@ import { subtitleToText } from './subtitles';
 
 interface LocalYouTubeSubtitles {
   loadSubtitles(options: { videoId: string; language: 'original' | 'de' | 'en'; cookies?: string }): Promise<{ contents: string; language: string; title: string; author: string }>;
+  listVideos(options: { url: string; limit: number; cookies?: string }): Promise<{ ids: string[] }>;
 }
 
 const plugin = registerPlugin<LocalYouTubeSubtitles>('LocalYouTubeSubtitles');
+
+export async function youtubeCatalogLocal(url: string, limit: number, cookies?: string): Promise<string[]> {
+  try {
+    const result = await plugin.listVideos({ url, limit, cookies });
+    if (!Array.isArray(result.ids)) throw new Error('YouTube hat keine gültige Videoliste geliefert.');
+    return result.ids.filter(id => /^[A-Za-z0-9_-]{11}$/.test(id));
+  } catch (error) { throw explainLocalYouTubeError(error); }
+}
 
 export function explainLocalYouTubeError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);

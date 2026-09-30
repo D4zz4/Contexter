@@ -1,6 +1,7 @@
 package app.contexter.local;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.CapacitorPlugin;
@@ -11,11 +12,13 @@ import com.chaquo.python.Python;
 import dev.ffmpegkit_maintained.ytdlp.YtDlp;
 
 import java.io.File;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.LinkedHashSet;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,6 +38,78 @@ public class YtDlpPlugin extends Plugin {
             if (files != null) for (File file : files) file.delete();
             directory.delete();
         }
+    }
+
+    @PluginMethod
+    public void listVideos(PluginCall call) {
+        String url = call.getString("url", "");
+        Integer requestedLimit = call.getInt("limit", 5000);
+        int limit = requestedLimit == null ? 5000 : requestedLimit;
+        String cookies = call.getString("cookies", "");
+        try {
+            URI parsed = new URI(url);
+            if (!"https".equals(parsed.getScheme()) || !"www.youtube.com".equals(parsed.getHost()) ||
+                !parsed.getPath().matches("/(?:@[^/]+|channel/UC[A-Za-z0-9_-]{22}|c/[^/]+|user/[^/]+)/(?:videos|shorts|streams)|/playlist")) {
+                call.reject("Bitte einen YouTube-Kanal oder eine Playlist eingeben.");
+                return;
+            }
+        } catch (Exception error) {
+            call.reject("Ungültige YouTube-Kanaladresse.");
+            return;
+        }
+        if (limit < 1 || limit > 5000 || cookies.length() > 1024 * 1024 ||
+            (!cookies.isEmpty() && !cookies.startsWith("# Netscape HTTP Cookie File"))) {
+            call.reject("Ungültiges Limit oder ungültige YouTube-Cookie-Datei.");
+            return;
+        }
+        worker.execute(() -> {
+            File directory = new File(getContext().getCacheDir(), "subtitles-" + UUID.randomUUID());
+            try {
+                if (!directory.mkdirs()) throw new IllegalStateException("Temporärer Ordner konnte nicht erstellt werden.");
+                File cookieFile = null;
+                if (!cookies.isEmpty()) {
+                    cookieFile = new File(directory, "youtube-cookies.txt");
+                    Files.write(cookieFile.toPath(), cookies.getBytes(StandardCharsets.UTF_8));
+                    cookieFile.setReadable(false, false);
+                    cookieFile.setReadable(true, true);
+                    cookieFile.setWritable(false, false);
+                    cookieFile.setWritable(true, true);
+                }
+                synchronized (YtDlpPlugin.class) {
+                    if (!initialized) { YtDlp.init(getContext().getApplicationContext()); initialized = true; }
+                }
+                Python python = Python.getInstance();
+                PyObject options = python.getBuiltins().callAttr("dict");
+                options.asMap().put(PyObject.fromJava("extract_flat"), PyObject.fromJava(true));
+                options.asMap().put(PyObject.fromJava("playlistend"), PyObject.fromJava(limit));
+                options.asMap().put(PyObject.fromJava("skip_download"), PyObject.fromJava(true));
+                options.asMap().put(PyObject.fromJava("quiet"), PyObject.fromJava(true));
+                if (cookieFile != null) options.asMap().put(PyObject.fromJava("cookiefile"), PyObject.fromJava(cookieFile.getAbsolutePath()));
+                PyObject downloader = python.getModule("yt_dlp").callAttr("YoutubeDL", options);
+                LinkedHashSet<String> ids = new LinkedHashSet<>();
+                try {
+                    PyObject info = downloader.callAttr("extract_info", url, false);
+                    PyObject entries = field(info, "entries");
+                    if (entries == null) throw new IllegalStateException("YouTube hat für diesen Kanal keine Videoliste geliefert.");
+                    for (PyObject entry : entries.asList()) {
+                        PyObject id = field(entry, "id");
+                        if (id != null && id.toString().matches("[A-Za-z0-9_-]{11}")) ids.add(id.toString());
+                        if (ids.size() >= limit) break;
+                    }
+                } finally { downloader.callAttr("close"); }
+                JSArray resultIds = new JSArray();
+                for (String id : ids) resultIds.put(id);
+                JSObject result = new JSObject();
+                result.put("ids", resultIds);
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject(error.getMessage() == null ? "YouTube-Kanal konnte nicht gelesen werden." : error.getMessage());
+            } finally {
+                File[] files = directory.listFiles();
+                if (files != null) for (File file : files) file.delete();
+                directory.delete();
+            }
+        });
     }
 
     @PluginMethod

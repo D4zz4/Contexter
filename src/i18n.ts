@@ -121,6 +121,7 @@ const english: Record<string, string> = {
   '… und': '… and',
   'weitere.': 'more.',
   'Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Neue YouTube-Transkripte enthalten keine Zeitstempel. YouTube kann Abrufe je nach Netzwerk oder VPN blockieren; ein Browserbesuch kann helfen, seine Anmeldung wird aber nicht automatisch an Contexter übertragen.': 'Load directly on this Android device with yt-dlp, without an API key. New YouTube transcripts have no timestamps. YouTube may block requests depending on network or VPN; opening the video in a browser may help, but browser sign-in is not passed to Contexter automatically.',
+  'Direkt über Chrome und deine vorhandene YouTube-Sitzung laden – ohne API-Schlüssel. Beim ersten Abruf fragt Chrome einmal nach Zugriff auf youtube.com. Contexter liest weder dein Passwort noch exportiert es Cookies. YouTube kann einzelne Abrufe trotzdem blockieren.': 'Load directly through Chrome and your existing YouTube session, without an API key. On the first request, Chrome asks once for access to youtube.com. Contexter neither reads your password nor exports cookies. YouTube may still block individual requests.',
   'UNTERTITELSPRACHE': 'SUBTITLE LANGUAGE',
   'Originalsprache (falls erkennbar)': 'Original language (if detectable)',
   'Deutsch': 'German',

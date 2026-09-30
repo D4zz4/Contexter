@@ -1,3 +1,6 @@
+import { defineBackground } from 'wxt/utils/define-background';
+import { fetchBrowserYouTubeTranscript } from '../src/youtube-browser';
+
 export default defineBackground(() => {
   chrome.action.onClicked.addListener(tab => {
     void (async () => {
@@ -11,7 +14,15 @@ export default defineBackground(() => {
   });
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-    if (!message || typeof message !== 'object' || (message as { type?: string }).type !== 'contexter:capture-activated-tab') return;
+    if (!message || typeof message !== 'object') return;
+    const request = message as { type?: string; url?: string; language?: 'original' | 'de' | 'en' };
+    if (request.type === 'contexter:youtube-transcript') {
+      void fetchBrowserYouTubeTranscript(request.url || '', request.language || 'original')
+        .then(sendResponse)
+        .catch(error => sendResponse({ error: error instanceof Error ? error.message : String(error) }));
+      return true;
+    }
+    if (request.type !== 'contexter:capture-activated-tab') return;
     void (async () => {
       const { contexterActivatedTab } = await chrome.storage.session.get('contexterActivatedTab') as { contexterActivatedTab?: { id: number; url: string } };
       if (!contexterActivatedTab) throw new Error('Öffne Contexter über das Symbol auf der gewünschten Webseite.');
@@ -26,4 +37,3 @@ export default defineBackground(() => {
     return true;
   });
 });
-import { defineBackground } from 'wxt/utils/define-background';

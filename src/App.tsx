@@ -7,6 +7,7 @@ import { isNative, shareInbox, sharedFile, sharedText } from './share-inbox';
 import { backupLibrary, importLibraryAsNotebook, mergeLibraries, readLibraryBackup } from './backup';
 import { braveSearch, isYouTubeVideoUrl, parseYouTubeLinks, youtubeCatalog, youtubeTranscript, type SearchResult } from './providers';
 import { youtubeTranscriptLocal } from './ytdlp';
+import { requestBrowserYouTubeAccess, youtubeTranscriptBrowser } from './youtube-browser';
 import { cleanTimestampedText } from './subtitles';
 import { prepareYouTubeCookies } from './youtube-cookies';
 import { loadLanguage, loadTheme, translateUi, type Language, type Theme } from './i18n';
@@ -192,9 +193,8 @@ export default function App() {
 
   async function openAddDialog() {
     setDialog('add');
-    if (!isNative) return;
     try {
-      const { text } = await shareInbox().readClipboard();
+      const text = isNative ? (await shareInbox().readClipboard()).text : await navigator.clipboard.readText();
       const { urls } = parseYouTubeLinks(text);
       if (urls.length && window.confirm(message(`${urls.length} YouTube-Link(s) in der Zwischenablage gefunden. Als YouTube-Quelle übernehmen?`, `${urls.length} YouTube link(s) found in the clipboard. Import as YouTube sources?`))) {
         setAddTab('youtube');
@@ -310,13 +310,17 @@ export default function App() {
     if (added) { setTextInput(''); setTextTitle(''); setDialog(null); }
   }
 
-  async function handleYouTube(method: 'local' | 'supadata') {
+  async function handleYouTube(method: 'local' | 'browser' | 'supadata') {
     const { urls, invalid, repeats } = parseYouTubeLinks(urlInput);
     if (!urls.length) { setNotice(t('Bitte mindestens einen gültigen YouTube-Video-Link eingeben.')); return; }
     if (urls.length > 100) { setNotice(t('Bitte höchstens 100 unterschiedliche Video-Links pro Durchlauf eingeben.')); return; }
     const notebookId = notebook.id;
     const pending = urls.filter(url => !findDuplicate(libraryRef.current, createSource({ notebookId, kind: 'youtube', title: url, body: '', originalUrl: url })));
     if (method === 'supadata' && pending.length && !window.confirm(message(`${pending.length} Video(s) über Supadata abrufen? Jeder Abruf kann Kosten verursachen.`, `Fetch ${pending.length} video(s) via Supadata? Each request may incur costs.`))) return;
+    if (method === 'browser' && pending.length) {
+      try { await requestBrowserYouTubeAccess(); }
+      catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
+    }
     setBusy(true);
     setYoutubeBatchErrors([]);
     let imported = 0;
@@ -325,7 +329,7 @@ export default function App() {
     for (const [index, url] of pending.entries()) {
       setYoutubeBatchProgress(message(`Video ${index + 1} von ${pending.length} wird geladen …`, `Loading video ${index + 1} of ${pending.length}…`));
       try {
-        const result = method === 'local' ? await youtubeTranscriptLocal(url, subtitleLanguage, youtubeCookies || undefined) : await youtubeTranscript(url, supadataKey);
+        const result = method === 'local' ? await youtubeTranscriptLocal(url, subtitleLanguage, youtubeCookies || undefined) : method === 'browser' ? await youtubeTranscriptBrowser(url, subtitleLanguage) : await youtubeTranscript(url, supadataKey);
         const added = await addSource(createSource({ notebookId, kind: 'youtube', title: result.title, body: cleanTimestampedText(result.body, true), originalUrl: url, author: result.author, language: result.language, provider: result.provider, warnings: result.warnings, status: result.warnings.length ? 'partial' : 'ready' }), { open: false, silent: true });
         if (added) imported++; else skipped++;
       } catch (error) { errors.push({ url, message: error instanceof Error ? error.message : String(error) }); }
@@ -650,9 +654,14 @@ export default function App() {
 
   async function reprocessSource(item: Source) {
     if (!item.originalUrl) return;
+    if (item.kind === 'youtube' && !isNative && item.provider !== 'supadata-native') {
+      try { await requestBrowserYouTubeAccess(); }
+      catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
+    }
     setBusy(true);
     try {
-      const extracted = item.kind === 'youtube' ? isNative && item.provider !== 'supadata-native' ? await youtubeTranscriptLocal(item.originalUrl, item.language === 'en' ? 'en' : item.language === 'de' ? 'de' : 'original', youtubeCookies || undefined) : await youtubeTranscript(item.originalUrl, supadataKey) : await extractUrl(item.originalUrl);
+      const requestedLanguage = item.language === 'en' ? 'en' : item.language === 'de' ? 'de' : 'original';
+      const extracted = item.kind === 'youtube' ? item.provider === 'supadata-native' ? await youtubeTranscript(item.originalUrl, supadataKey) : isNative ? await youtubeTranscriptLocal(item.originalUrl, requestedLanguage, youtubeCookies || undefined) : await youtubeTranscriptBrowser(item.originalUrl, requestedLanguage) : await extractUrl(item.originalUrl);
       if (item.editedByUser) {
         const copy = createSource({ notebookId: item.notebookId, kind: extracted.kind, title: `${extracted.title} (Neu extrahiert)`, body: item.kind === 'youtube' ? cleanTimestampedText(extracted.body, true) : extracted.body, originalUrl: item.originalUrl, author: extracted.author, conflictOf: item.id, warnings: [...extracted.warnings, 'Manuell bearbeitete Fassung wurde nicht überschrieben.'], status: 'partial' });
         await commit(value => ({ ...value, sources: [...value.sources, copy] }));
@@ -762,8 +771,8 @@ export default function App() {
           <p className="helper">{t("Du kannst mehrere Video-Links einfügen. Sie werden nacheinander geladen; doppelte und bereits vorhandene Videos werden übersprungen. Maximal 100 unterschiedliche Videos pro Durchlauf.")}</p>
           {youtubeBatchProgress && <p className="helper" role="status">{youtubeBatchProgress}</p>}
           {youtubeBatchErrors.length > 0 && <div className="warning" role="alert"><strong>{youtubeBatchErrors.length}{t(" Link(s) nicht geladen; sie bleiben oben für einen erneuten Versuch:")}</strong>{youtubeBatchErrors.slice(0, 10).map((item, index) => <div key={`${item.url}-${index}`}>{item.url}: {item.message}{isYouTubeVideoUrl(item.url) && <div><a href={item.url} target="_blank" rel="noreferrer">{t("Video im Browser öffnen ↗")}</a></div>}</div>)}{youtubeBatchErrors.length > 10 && <div>{t("… und ")}{youtubeBatchErrors.length - 10}{t(" weitere.")}</div>}</div>}
-          {isNative && <><p className="helper">{t("Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Neue YouTube-Transkripte enthalten keine Zeitstempel. YouTube kann Abrufe je nach Netzwerk oder VPN blockieren; ein Browserbesuch kann helfen, seine Anmeldung wird aber nicht automatisch an Contexter übertragen.")}</p><label>{t("UNTERTITELSPRACHE")}<select value={subtitleLanguage} disabled={busy} onChange={event => setSubtitleLanguage(event.target.value as 'original' | 'de' | 'en')}><option value="original">{t("Originalsprache (falls erkennbar)")}</option><option value="de">{t("Deutsch")}</option><option value="en">{t("Englisch")}</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube('local')}>{busy ? t('Lade Untertitel …') : t('Untertitel ohne API-Schlüssel laden')}</button><div className="backup-section"><h3>{t("Optional: YouTube-Cookies")}</h3><p>{t("Wenn YouTube den Abruf als Bot blockiert, kannst du eine selbst exportierte Netscape-Cookie-Datei auswählen. Contexter übernimmt daraus nur YouTube-Einträge. Cookies sind sensible Anmeldedaten: Die Auswahl bleibt nur für diese App-Sitzung im Speicher und wird nicht gesichert. Während des Abrufs liegt eine temporäre Datei im privaten App-Cache; sie wird danach oder spätestens beim nächsten App-Start gelöscht. Ein Erfolg ist nicht garantiert; die App kann Cookies aus anderen Android-Browsern nicht direkt lesen und bietet keine eingebettete Google-Anmeldung.")}</p><input type="file" accept=".txt,text/plain" disabled={busy} aria-label={t("YouTube-Cookie-Datei auswählen")} onChange={event => { void handleCookieFile(event.target.files?.[0]); event.target.value = ''; }} />{youtubeCookies && <div className="modal-actions"><span className="helper">{t("YouTube-Cookies für diese Sitzung geladen.")}</span><button className="button subtle" disabled={busy} onClick={() => { setYoutubeCookies(''); setNotice(t('YouTube-Cookies aus der App-Sitzung entfernt.')); }}>{t("Cookies vergessen")}</button></div>}</div></>}
-          {!isNative && <p className="helper">{t("Im Browser kannst du Untertiteldateien (VTT/SRT) ohne Schlüssel im Tab „Datei“ importieren. Der direkte yt-dlp-Abruf ist nur in der Android-App möglich.")}</p>}
+          <p className="helper">{t(isNative ? "Direkt auf diesem Android-Gerät mit yt-dlp laden – ohne API-Schlüssel. Neue YouTube-Transkripte enthalten keine Zeitstempel. YouTube kann Abrufe je nach Netzwerk oder VPN blockieren; ein Browserbesuch kann helfen, seine Anmeldung wird aber nicht automatisch an Contexter übertragen." : "Direkt über Chrome und deine vorhandene YouTube-Sitzung laden – ohne API-Schlüssel. Beim ersten Abruf fragt Chrome einmal nach Zugriff auf youtube.com. Contexter liest weder dein Passwort noch exportiert es Cookies. YouTube kann einzelne Abrufe trotzdem blockieren.")}</p><label>{t("UNTERTITELSPRACHE")}<select value={subtitleLanguage} disabled={busy} onChange={event => setSubtitleLanguage(event.target.value as 'original' | 'de' | 'en')}><option value="original">{t("Originalsprache (falls erkennbar)")}</option><option value="de">{t("Deutsch")}</option><option value="en">{t("Englisch")}</option></select></label><button className="button primary wide" disabled={busy || !urlInput.trim()} onClick={() => void handleYouTube(isNative ? 'local' : 'browser')}>{busy ? t('Lade Untertitel …') : t('Untertitel ohne API-Schlüssel laden')}</button>
+          {isNative && <div className="backup-section"><h3>{t("Optional: YouTube-Cookies")}</h3><p>{t("Wenn YouTube den Abruf als Bot blockiert, kannst du eine selbst exportierte Netscape-Cookie-Datei auswählen. Contexter übernimmt daraus nur YouTube-Einträge. Cookies sind sensible Anmeldedaten: Die Auswahl bleibt nur für diese App-Sitzung im Speicher und wird nicht gesichert. Während des Abrufs liegt eine temporäre Datei im privaten App-Cache; sie wird danach oder spätestens beim nächsten App-Start gelöscht. Ein Erfolg ist nicht garantiert; die App kann Cookies aus anderen Android-Browsern nicht direkt lesen und bietet keine eingebettete Google-Anmeldung.")}</p><input type="file" accept=".txt,text/plain" disabled={busy} aria-label={t("YouTube-Cookie-Datei auswählen")} onChange={event => { void handleCookieFile(event.target.files?.[0]); event.target.value = ''; }} />{youtubeCookies && <div className="modal-actions"><span className="helper">{t("YouTube-Cookies für diese Sitzung geladen.")}</span><button className="button subtle" disabled={busy} onClick={() => { setYoutubeCookies(''); setNotice(t('YouTube-Cookies aus der App-Sitzung entfernt.')); }}>{t("Cookies vergessen")}</button></div>}</div>}
           <div className="backup-section"><h3>{t("Optional: Supadata")}</h3><p>{t("Nur wenn du den folgenden Schlüssel eingibst und „Über Supadata laden“ wählst, wird der Link an diesen externen Dienst übertragen. Abrufe können Kosten verursachen. Der Schlüssel bleibt nur im Arbeitsspeicher.")}</p>
           <label>{t("SUPADATA API-SCHLÜSSEL")}<input type="password" autoComplete="off" value={supadataKey} onChange={event => setSupadataKey(event.target.value)} /></label>
           <button className="button subtle wide" disabled={busy || !urlInput.trim() || !supadataKey.trim()} onClick={() => void handleYouTube('supadata')}>{t("Über Supadata laden")}</button></div>
